@@ -1,0 +1,6 @@
+# GAS（Google Apps Script）のバックエンドコード・デプロイ手順書は
+# 非公開情報（SPREADSHEET_ID等）を含むため、このリポジトリにはpushしない。
+/gas/
+
+# 実名・具体的な病名を含む開発用の仕様書は非公開のためpushしない。
+hikitsugi_cloud_instructions_v2.md

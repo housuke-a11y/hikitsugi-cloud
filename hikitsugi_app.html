@@ -1,0 +1,4350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="訪問介護・医療職向け引き継ぎ連絡票アプリ。VoiceOver対応。">
+
+  <!-- PWA: ホーム画面に追加したときネイティブアプリ風に表示 -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="引き継ぎ連絡票">
+
+  <!-- テーマカラー（ブラウザのUIバーに反映） -->
+  <meta name="theme-color" content="#ffffff">
+
+  <title>引き継ぎ連絡票</title>
+
+  <style>
+    /* ─── リセット・ベース ─────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      /* 引き継ぎ連絡票の色定義（Word版と統一） */
+      --ch:      #1a4a8a;   /* ヘルパー：テキスト */
+      --ch-bg:   #dceaf8;   /* ヘルパー：背景 */
+      --ch-hdr:  #c6d9f1;   /* ヘルパー：ヘッダ帯 */
+      --cm:      #1a5c2a;   /* 医療職：テキスト */
+      --cm-bg:   #dcf0dc;   /* 医療職：背景 */
+      --cm-hdr:  #c6dec6;   /* 医療職：ヘッダ帯 */
+      --cc-hdr:  #e8e8e8;   /* 共通：ヘッダ帯 */
+      --cc-txt:  #333333;   /* 共通：テキスト */
+
+      /* UIカラー */
+      --focus:   #0055cc;   /* フォーカスリング（コントラスト比 4.5:1 以上を確保） */
+      --danger:  #c0392b;
+      --bg:      #f4f4f0;
+      --surface: #ffffff;
+      --border:  #c8c8c8;
+      --txt:     #111111;
+      --txt-sub: #555555;
+
+      /* タイポグラフィ */
+      --font: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+              "Noto Sans JP", sans-serif;
+
+      /* スペーシング */
+      --rad-md: 8px;
+      --rad-lg: 12px;
+    }
+
+    /* ダークモード対応 */
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #1a1a1a;
+        --surface: #2a2a2a;
+        --border:  #555;
+        --txt:     #f0f0f0;
+        --txt-sub: #aaaaaa;
+        --ch-bg:   #1a2f4a;
+        --ch-hdr:  #1e3a5f;
+        --ch:      #7ab8f5;
+        --cm-bg:   #1a3020;
+        --cm-hdr:  #1e3d28;
+        --cm:      #6ecf8a;
+        --cc-hdr:  #3a3a3a;
+        --cc-txt:  #cccccc;
+      }
+    }
+
+    html { font-size: 16px; }
+
+    body {
+      font-family: var(--font);
+      font-size: 1rem;
+      line-height: 1.65;
+      background: var(--bg);
+      color: var(--txt);
+      /* iOS SafeArea対応（ノッチ・ホームバー） */
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    /* スクリーンリーダー専用テキスト */
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ─── レイアウト ─────────────────────────────────── */
+    #app {
+      max-width: 540px;
+      margin: 0 auto;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ─── ナビゲーション（タブバー） ────────────────────── */
+    #main-nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      /* iOS SafeArea: ノッチ上端 */
+      padding-top: env(safe-area-inset-top);
+    }
+
+    #main-nav button {
+      flex: 1;
+      padding: 10px 4px 8px;
+      font-size: 14px;
+      font-family: var(--font);
+      border: none;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: var(--txt-sub);
+      cursor: pointer;
+      min-height: 48px;       /* タッチターゲット 44px以上 */
+      transition: color .15s, border-color .15s;
+    }
+
+    #main-nav button[aria-selected="true"] {
+      color: var(--txt);
+      border-bottom-color: var(--focus);
+      font-weight: 600;
+    }
+
+    #main-nav button:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: -2px;
+    }
+
+    /* ─── ページ切り替え ─────────────────────────────── */
+    .page { display: none; flex: 1; padding: 12px; flex-direction: column; gap: 12px; }
+    .page.active { display: flex; }
+
+    /* ─── カード ─────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border-radius: var(--rad-lg);
+      border: 1px solid var(--border);
+      padding: 14px;
+    }
+
+    .card-title {
+      font-size: 1rem;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: var(--txt);
+    }
+
+    /* ─── セクション帯（色分けラベル） ───────────────────── */
+    .sec-bar {
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 0.875rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .sec-common  { background: var(--cc-hdr); color: var(--cc-txt); }
+    .sec-helper  { background: var(--ch-hdr); color: var(--ch); }
+    .sec-medical { background: var(--cm-hdr); color: var(--cm); }
+
+    /* ─── フォーム要素 ───────────────────────────────── */
+    label {
+      display: block;
+      font-size: 0.875rem;
+      color: var(--txt-sub);
+      margin-bottom: 4px;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    input[type="time"],
+    select,
+    textarea {
+      width: 100%;
+      font-family: var(--font);
+      font-size: 1rem;
+      padding: 9px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--rad-md);
+      background: var(--surface);
+      color: var(--txt);
+      min-height: 44px;       /* タッチターゲット */
+    }
+
+    /* appearance:none はselectのみに適用 */
+    /* date/timeに適用するとiOS Safariでピッカーが開かなくなるため除外 */
+    input[type="text"],
+    select,
+    textarea {
+      appearance: none;
+      -webkit-appearance: none;
+    }
+
+    input:focus-visible,
+    select:focus-visible,
+    textarea:focus-visible {
+      outline: 3px solid var(--focus);
+      outline-offset: 2px;
+      border-color: var(--focus);
+    }
+
+    /* iOS でのselect矢印 */
+    select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23666' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    /* ─── チェック・ラジオ項目 ──────────────────────────── */
+    .check-group { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+
+    .check-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      min-height: 48px;
+    }
+
+    .check-item input[type="checkbox"],
+    .check-item input[type="radio"] {
+      width: 24px;
+      height: 24px;
+      min-width: 24px;
+      cursor: pointer;
+      accent-color: var(--focus);
+      /* width/min-height override for checkbox/radio */
+      min-height: unset;
+    }
+
+    .check-item label {
+      font-size: 1rem;
+      cursor: pointer;
+      margin: 0;
+      color: var(--txt);
+    }
+
+    /* チェック項目の色分け */
+    .grp-helper  .check-item { background: var(--ch-bg);  border-color: var(--ch-hdr); }
+    .grp-medical .check-item { background: var(--cm-bg);  border-color: var(--cm-hdr); }
+    .grp-common  .check-item { background: var(--cc-hdr); border-color: var(--border); }
+
+    /* ─── 音声入力行 ─────────────────────────────────── */
+    .mic-row { display: flex; gap: 8px; align-items: flex-end; }
+    .mic-row textarea { flex: 1; }
+
+    .mic-btn {
+      min-width: 48px;
+      min-height: 48px;
+      padding: 0;
+      border-radius: var(--rad-md);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      cursor: pointer;
+      font-size: 1.25rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .mic-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+    .mic-btn[data-active="true"] { background: #fff0f0; border-color: var(--danger); }
+
+    /* ─── ボタン ─────────────────────────────────────── */
+    .btn-primary {
+      display: block;
+      width: 100%;
+      padding: 13px;
+      font-family: var(--font);
+      font-size: 1rem;
+      font-weight: 600;
+      background: var(--focus);
+      color: #fff;
+      border: none;
+      border-radius: var(--rad-md);
+      cursor: pointer;
+      min-height: 48px;
+      text-align: center;
+    }
+    .btn-primary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+    .btn-secondary {
+      padding: 9px 16px;
+      font-family: var(--font);
+      font-size: 0.9375rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--rad-md);
+      cursor: pointer;
+      min-height: 44px;
+      color: var(--txt);
+    }
+    .btn-secondary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+    .btn-danger {
+      padding: 9px 16px;
+      font-family: var(--font);
+      font-size: 0.9375rem;
+      background: #fff0f0;
+      border: 1px solid #e0aaaa;
+      border-radius: var(--rad-md);
+      cursor: pointer;
+      min-height: 44px;
+      color: var(--danger);
+    }
+    .btn-danger:focus-visible { outline: 3px solid var(--danger); outline-offset: 2px; }
+
+    /* ─── 通知ボックス ───────────────────────────────── */
+    .alert-none {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.9375rem;
+      color: var(--txt-sub);
+      font-style: italic;
+    }
+
+    .alert-warn {
+      background: #fffbea;
+      border: 1px solid #e0c060;
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 0.9375rem;
+      color: #7a5c00;
+    }
+
+    .prev-box {
+      background: var(--ch-bg);
+      border: 1px solid var(--ch-hdr);
+      border-radius: 8px;
+      padding: 12px;
+    }
+
+    .prev-meta {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--ch);
+      margin-bottom: 6px;
+    }
+
+    .prev-body {
+      font-size: 0.9375rem;
+      color: var(--txt);
+      white-space: pre-wrap;
+      line-height: 1.7;
+    }
+
+    /* ─── 過去ログ ───────────────────────────────────── */
+    .log-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      background: var(--surface);
+    }
+
+    .log-meta { font-size: 0.8125rem; color: var(--txt-sub); }
+    .log-staff { font-size: 0.9375rem; font-weight: 600; color: var(--txt); }
+    .log-snippet {
+      font-size: 0.875rem;
+      color: var(--txt-sub);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .badge {
+      display: inline-block;
+      font-size: 0.75rem;
+      padding: 2px 9px;
+      border-radius: 20px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .badge-helper  { background: var(--ch-hdr);  color: var(--ch); }
+    .badge-medical { background: var(--cm-hdr);  color: var(--cm); }
+    .badge-work    { background: #e8d5f5;         color: #5a2d82; }  /* 就労支援：紫系 */
+    .badge-common  { background: var(--cc-hdr);  color: var(--cc-txt); }
+    .badge-self    { background: #fde8b4;         color: #7a4f00; }  /* 本人・家族申告：橙系 */
+    .sec-self      { background: #fde8b4;         color: #7a4f00; }
+    /* 本人申告モード時のフォームハイライト */
+    #self-report-form { border: 2px solid #f0a830; border-radius: var(--rad-lg); padding: 4px; }
+
+    .filter-row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .filter-row > div { flex: 1; min-width: 130px; }
+
+    /* ─── モーダル ───────────────────────────────────── */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 100;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 20px;
+      padding-top: calc(20px + env(safe-area-inset-top));
+      overflow-y: auto;
+    }
+    #modal-overlay.open { display: flex; }
+
+    #modal-box {
+      background: var(--surface);
+      border-radius: var(--rad-lg);
+      width: 100%;
+      max-width: 500px;
+      padding: 16px;
+    }
+
+    /* ─── ライブリージョン（スクリーンリーダー通知） ─────── */
+    #live-region {
+      position: absolute;
+      left: -9999px;
+      width: 1px; height: 1px;
+      overflow: hidden;
+    }
+
+    /* ─── セクション表示切り替え ────────────────────────── */
+    .card[id^="sec-"] {
+      transition: opacity .2s ease;
+    }
+    .card[id^="sec-"][style*="none"] {
+      opacity: 0;
+    }
+
+    /* ─── フォームの区切り余白 ───────────────────────── */
+    .field { margin-top: 12px; }
+    .field:first-child { margin-top: 0; }
+
+    /* ─── 注意書き ───────────────────────────────────── */
+    .caution {
+      font-size: 0.875rem;
+      color: var(--danger);
+      margin-bottom: 8px;
+    }
+
+    /* ─── 今日のスケジュール行 ───────────────────────── */
+    .sched-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.9375rem;
+    }
+    .sched-row:last-child { border-bottom: none; }
+    .sched-time { color: var(--txt-sub); font-size: 0.8125rem; min-width: 105px; }
+
+    /* ─── 詳細テーブル ───────────────────────────────── */
+    .detail-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+    .detail-table td { padding: 6px 8px; vertical-align: top; border-bottom: 1px solid var(--border); }
+    .detail-table .dt-key { color: var(--txt-sub); font-weight: 600; white-space: nowrap; width: 40%; font-size: 0.875rem; }
+    .detail-table .dt-val { white-space: pre-wrap; color: var(--txt); }
+
+    /* ─── 印刷用スタイル (@media print) ────────────────── */
+    @media print {
+      /* 画面表示用UIをすべて隠す */
+      #app, #modal-overlay { display: none !important; }
+
+      /* 印刷エリアだけを表示 */
+      #print-area { display: block !important; }
+
+      /* A4・余白設定 */
+      @page {
+        size: A4 portrait;
+        margin: 12mm 15mm 12mm 20mm; /* 左20mm=ファイリング余白 */
+      }
+
+      html, body {
+        font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+                     "Noto Sans JP", sans-serif;
+        font-size: 10pt;
+        line-height: 1.5;
+        color: #000;
+        background: #fff;
+      }
+
+      /* 印刷エリア内の基本スタイル */
+      #print-area h1 {
+        font-size: 14pt;
+        font-weight: bold;
+        text-align: center;
+        margin: 0 0 6pt;
+        border-bottom: 1.5pt solid #000;
+        padding-bottom: 4pt;
+      }
+
+      .p-section {
+        margin-bottom: 5pt;
+        break-inside: avoid;
+      }
+
+      .p-sec-bar {
+        font-size: 9pt;
+        font-weight: bold;
+        padding: 2pt 5pt;
+        margin-bottom: 3pt;
+      }
+      .p-sec-common  { background: #e8e8e8; }
+      .p-sec-helper  { background: #c6d9f1; }
+      .p-sec-medical { background: #c6dec6; }
+      .p-sec-work    { background: #e8d5f5; }
+
+      .p-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 9pt;
+      }
+      .p-table td {
+        border: 0.5pt solid #888;
+        padding: 3pt 5pt;
+        vertical-align: top;
+      }
+      .p-table .p-key {
+        background: #f0f0f0;
+        font-weight: bold;
+        width: 28%;
+        white-space: nowrap;
+      }
+      .p-table .p-val {
+        white-space: pre-wrap;
+        word-break: break-all;
+      }
+      .p-table .p-full {
+        /* チェック・フリー欄など横幅いっぱい */
+      }
+
+      /* バイタル行：横並び3列 */
+      .p-vital-row td { width: 25%; }
+
+      /* 申し送り欄：高さを確保 */
+      .p-okuri-val {
+        min-height: 40pt;
+        white-space: pre-wrap;
+      }
+
+      /* 注記 */
+      .p-note {
+        font-size: 8pt;
+        margin-top: 4pt;
+      }
+
+      /* 非表示セクションは印刷しない */
+      .p-section[data-hidden="true"] { display: none !important; }
+    }
+
+    /* 画面表示時は印刷エリアを隠す */
+    #print-area { display: none; }
+  </style>
+</head>
+
+<body>
+  <!-- スクリーンリーダー向けページ説明 -->
+  <p class="sr-only">
+    引き継ぎ連絡票アプリ。ホーム・新規記録・過去ログの3つのタブで構成されています。
+    VoiceOver と点字ディスプレイに対応しています。
+  </p>
+
+  <!-- ライブリージョン（aria-live通知） -->
+  <div id="live-region" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <div id="app">
+
+    <!--
+      V2注記：このファイルは記録入力（page-form）・本人申告入力（page-self）専用の
+      サブ画面であり、ホーム／過去ログ／設定は home.html が唯一の入口となる。
+      以下の page-home / page-log / page-settings と、それらを切り替えるための
+      タブナビゲーションはV1の名残で、V2では意図的に到達不能にしてある
+      （main-navは削除済み。showPage('home'|'log'|'settings')は呼び出さない）。
+      理由：ここに残った旧ホーム画面には「作業終了」ボタンが無く、
+      ロール別のUI制御（ヘルパーに本人・家族申告ボタンを見せない等）も
+      効いていないため、誤って表示されるとログアウトできなくなる不具合の
+      原因になっていた。安全のため参照・削除は将来のクリーンアップで検討する。
+    -->
+
+    <!-- ===== ホーム（V2では非表示・到達不能。詳細は上の注記を参照） ===== -->
+    <main id="page-home" class="page"
+          role="main" aria-label="ホーム画面">
+
+      <!-- ピン留めされた本人・家族申告（最大3件・最新順） -->
+      <section class="card" aria-labelledby="h-pinned" id="sec-pinned" style="display:none">
+        <h2 class="card-title" id="h-pinned">
+          <span style="display:inline-block;background:#fde8b4;color:#7a4f00;padding:2px 8px;border-radius:4px;font-size:0.875rem;margin-right:6px">📌 ピン留め</span>本人・家族からの申告
+        </h2>
+        <div id="pinned-list" role="list"></div>
+      </section>
+
+      <section class="card" aria-labelledby="h-okuri-dan">
+        <h2 class="card-title" id="h-okuri-dan">前回の申し送り事項（旦）</h2>
+        <div id="prev-okuri-dan" class="alert-none" role="status">記録がありません</div>
+      </section>
+
+      <section class="card" aria-labelledby="h-okuri-sanae">
+        <h2 class="card-title" id="h-okuri-sanae">前回の申し送り事項（早南江）</h2>
+        <div id="prev-okuri-sanae" class="alert-none" role="status">記録がありません</div>
+      </section>
+
+      <section class="card" aria-labelledby="h-sched">
+        <h2 class="card-title" id="h-sched">本日の定例訪問</h2>
+        <div id="today-sched" role="status" aria-label="本日の定例訪問スケジュール"></div>
+      </section>
+
+      <div style="display:flex;gap:8px">
+        <button class="btn-primary" onclick="showPage('form')"
+                aria-label="新規記録の入力画面へ移動します" style="flex:1">
+          新規記録を入力する
+        </button>
+        <button class="btn-primary" style="flex:1;background:#c87800"
+                onclick="startSelfReport()"
+                aria-label="本人または家族として体調や希望ケアを申告する入力画面へ移動します">
+          本人・家族申告を入力する
+        </button>
+      </div>
+
+    </main>
+
+    <!-- ===== 新規記録フォーム ===== -->
+    <main id="page-form" class="page"
+          role="main" aria-label="新規記録入力画面">
+
+      <div style="display:flex;padding:4px 0 8px">
+        <button type="button" class="btn-secondary" onclick="requestExit('form')"
+                aria-label="入力を中断してホーム画面に戻ります。保存するかどうかを選べます">
+          ← ホームに戻る
+        </button>
+      </div>
+
+      <form id="record-form" onsubmit="saveRecord(event)" novalidate>
+
+        <div id="form-mode-label" role="status" aria-live="polite"
+             style="font-size:0.875rem;font-weight:600;color:var(--danger);padding:6px 10px;min-height:1.5em"></div>
+
+        <!-- 基本情報（共通） -->
+        <div class="card">
+          <div class="sec-bar sec-common" role="heading" aria-level="2">基本情報</div>
+
+          <fieldset class="field" style="border:none;padding:0">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:6px">
+              対象者 <span aria-hidden="true">*</span>
+            </legend>
+            <div class="check-group grp-common"
+                 role="radiogroup" aria-label="記録の対象者を選択してください"
+                 onchange="updateSubject()">
+              <div class="check-item"><input type="radio" name="subject" id="subj1" value="旦" onchange="updateSubject()"><label for="subj1">旦（河和 旦）</label></div>
+              <div class="check-item"><input type="radio" name="subject" id="subj2" value="早南江" onchange="updateSubject()"><label for="subj2">早南江（河和 早南江）</label></div>
+            </div>
+          </fieldset>
+
+          <div class="field">
+            <label for="f-date">日付 <span aria-hidden="true">*</span></label>
+            <input type="date" id="f-date" name="date"
+                   required aria-required="true"
+                   aria-describedby="f-date-hint">
+            <span id="f-date-hint" class="sr-only">必須項目です</span>
+          </div>
+
+          <div class="row2 field">
+            <div>
+              <label for="f-start">開始時刻</label>
+              <input type="time" id="f-start" name="start">
+            </div>
+            <div>
+              <label for="f-end">終了時刻</label>
+              <input type="time" id="f-end" name="end">
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="f-office">事業所名</label>
+            <select id="f-office" name="office"
+                    aria-label="事業所名を選択してください">
+              <option value="">-- 選択してください --</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="f-staff-select">担当者氏名</label>
+            <select id="f-staff-select" name="staff_select"
+                    aria-label="担当者氏名を選択してください"
+                    onchange="onStaffSelectChange()">
+              <option value="">-- 選択してください --</option>
+            </select>
+            <div id="f-staff-custom-wrap" style="display:none;margin-top:6px">
+              <input type="text" id="f-staff-custom" name="staff_custom"
+                     placeholder="担当者氏名を入力"
+                     aria-label="一覧にない担当者氏名を入力してください">
+              <button type="button" id="f-staff-add-btn"
+                      onclick="addStaffFromForm()"
+                      style="margin-top:6px;font-size:0.875rem;padding:7px 14px"
+                      class="btn-secondary"
+                      aria-label="入力した担当者名を担当者一覧に追加します">
+                担当者一覧に追加
+              </button>
+            </div>
+          </div>
+
+          <fieldset class="field" style="border:none;padding:0">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:6px">
+              サービス種別（複数選択可）
+            </legend>
+            <div class="check-group grp-common"
+                 role="group" aria-label="サービス種別を選択してください。複数選択可"
+                 onchange="updateDoneChecks()">
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc1" value="家事援助"><label for="svc1">家事援助</label></div>
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc2" value="入浴介助"><label for="svc2">入浴介助</label></div>
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc3" value="訪問看護"><label for="svc3">訪問看護</label></div>
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc4" value="訪問鍼灸"><label for="svc4">訪問鍼灸</label></div>
+              <div class="check-item svc-dan-only"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc5" value="同行援護"><label for="svc5">同行援護</label></div>
+              <div class="check-item svc-dan-only"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc13" value="移動支援"><label for="svc13">移動支援</label></div>
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc6" value="訪問診療"><label for="svc6">訪問診療</label></div>
+              <div class="check-item svc-dan-only"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc14" value="眼科訪問診療"><label for="svc14">眼科訪問診療</label></div>
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc7" value="訪問服薬指導"><label for="svc7">訪問服薬指導</label></div>
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc8" value="訪問リハビリ"><label for="svc8">訪問リハビリ</label></div>
+              <div class="check-item svc-sanae-only"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc11" value="通院介助"><label for="svc11">通院介助</label></div>
+              <div class="check-item svc-dan-only"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc10" value="就労支援特別事業"><label for="svc10">就労支援特別事業</label></div>
+              <div class="check-item svc-dan-only"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc15" value="活動随行"><label for="svc15">活動随行（自費・第三者負担）</label></div>
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc12" value="モニタリング"><label for="svc12">モニタリング</label></div>
+              <div class="check-item"><input type="checkbox" name="svctype" onchange="updateDoneChecks()" id="svc9" value="その他"><label for="svc9">その他</label></div>
+            </div>
+          </fieldset>
+
+          <!-- サービスごとの実施時間（任意・選択種別に応じて動的に表示） -->
+          <div id="svc-times" class="field" aria-live="polite"></div>
+        </div>
+
+        <!-- 本人の状態：旦 -->
+        <div class="card" id="sec-honnin">
+          <div class="sec-bar sec-helper" role="heading" aria-level="2">本人の状態（旦）</div>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">体調全般</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="condition" id="c1" value="良好"><label for="c1">良好</label></div>
+              <div class="check-item"><input type="radio" name="condition" id="c2" value="やや不良"><label for="c2">やや不良</label></div>
+              <div class="check-item"><input type="radio" name="condition" id="c3" value="不良"><label for="c3">不良</label></div>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">気分・精神状態</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="mood" id="m1" value="穏やか"><label for="m1">穏やか</label></div>
+              <div class="check-item"><input type="radio" name="mood" id="m2" value="不安・緊張あり"><label for="m2">不安・緊張あり</label></div>
+              <div class="check-item"><input type="radio" name="mood" id="m3" value="その他"><label for="m3">その他</label></div>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">食事・水分摂取</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="food" id="f1" value="摂取できている"><label for="f1">摂取できている</label></div>
+              <div class="check-item"><input type="radio" name="food" id="f2" value="少ない"><label for="f2">少ない</label></div>
+              <div class="check-item"><input type="radio" name="food" id="f3" value="摂取できていない"><label for="f3">摂取できていない</label></div>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">疼痛・痺れ等の訴え</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="pain" id="p1" value="なし"><label for="p1">なし</label></div>
+              <div class="check-item"><input type="radio" name="pain" id="p2" value="あり"><label for="p2">あり</label></div>
+            </div>
+            <div class="mic-row" style="margin-top:8px">
+              <textarea id="f-pain-note" name="pain_note" rows="2"
+                        placeholder="訴えの内容（音声または入力）"
+                        aria-label="疼痛・痺れの内容。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-pain-note', this)"
+                      aria-label="疼痛・痺れ内容の音声入力を開始">🎤</button>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">転倒・ヒヤリハット</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="fall" id="fa1" value="なし"><label for="fa1">なし</label></div>
+              <div class="check-item"><input type="radio" name="fall" id="fa2" value="あり"><label for="fa2">あり</label></div>
+            </div>
+            <div class="mic-row" style="margin-top:8px">
+              <textarea id="f-fall-note" name="fall_note" rows="2"
+                        placeholder="内容（音声または入力）"
+                        aria-label="転倒・ヒヤリハットの内容。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-fall-note', this)"
+                      aria-label="転倒・ヒヤリハット内容の音声入力を開始">🎤</button>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">見えにくさ・視覚障害による困りごと<span style="font-size:0.75rem;font-weight:400;margin-left:6px">（緑内障による視野・見え方の変化など）</span></legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="vision" id="vi1" value="変化なし（いつも通り）"><label for="vi1">変化なし（いつも通り）</label></div>
+              <div class="check-item"><input type="radio" name="vision" id="vi2" value="やや見えにくそう"><label for="vi2">やや見えにくそう</label></div>
+              <div class="check-item"><input type="radio" name="vision" id="vi3" value="かなり見えにくそう"><label for="vi3">かなり見えにくそう</label></div>
+              <div class="check-item"><input type="radio" name="vision" id="vi4" value="本人から申告あり"><label for="vi4">本人から申告あり</label></div>
+            </div>
+            <div class="mic-row" style="margin-top:8px">
+              <textarea id="f-vision-note" name="vision_note" rows="2"
+                        placeholder="具体的な状況（音声または入力）例：段差でつまずきそうになった、薬の識別が難しそうだった"
+                        aria-label="見えにくさによる困りごとの具体的な内容。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-vision-note', this)"
+                      aria-label="視覚による困りごとの音声入力を開始">🎤</button>
+            </div>
+          </fieldset>
+        </div>
+
+        <!-- 本人の状態：早南江 -->
+        <div class="card" id="sec-honnin-sanae" style="display:none">
+          <div class="sec-bar sec-helper" role="heading" aria-level="2">本人の状態（早南江）</div>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">体調全般</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="s_condition" id="sc1" value="良好"><label for="sc1">良好</label></div>
+              <div class="check-item"><input type="radio" name="s_condition" id="sc2" value="やや不良"><label for="sc2">やや不良</label></div>
+              <div class="check-item"><input type="radio" name="s_condition" id="sc3" value="不良"><label for="sc3">不良</label></div>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">気分・精神状態</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="s_mood" id="sm1" value="穏やか"><label for="sm1">穏やか</label></div>
+              <div class="check-item"><input type="radio" name="s_mood" id="sm2" value="不安・緊張あり"><label for="sm2">不安・緊張あり</label></div>
+              <div class="check-item"><input type="radio" name="s_mood" id="sm3" value="その他"><label for="sm3">その他</label></div>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">食事・水分摂取</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="s_food" id="sf1" value="摂取できている"><label for="sf1">摂取できている</label></div>
+              <div class="check-item"><input type="radio" name="s_food" id="sf2" value="少ない"><label for="sf2">少ない</label></div>
+              <div class="check-item"><input type="radio" name="s_food" id="sf3" value="摂取できていない"><label for="sf3">摂取できていない</label></div>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">動悸・息切れ・胸部症状<span style="font-size:0.75rem;font-weight:400;margin-left:6px">（心房細動・急性貧血の既往あり）</span></legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="s_cardiac" id="sca1" value="なし"><label for="sca1">なし</label></div>
+              <div class="check-item"><input type="radio" name="s_cardiac" id="sca2" value="あり"><label for="sca2">あり</label></div>
+            </div>
+            <div class="mic-row" style="margin-top:8px">
+              <textarea id="f-cardiac-note" name="cardiac_note" rows="2"
+                        placeholder="症状の内容（音声または入力）"
+                        aria-label="動悸・胸部症状の内容。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-cardiac-note', this)"
+                      aria-label="動悸・胸部症状の音声入力を開始">🎤</button>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">腰痛・股関節痛（右）<span style="font-size:0.75rem;font-weight:400;margin-left:6px">（慢性腰痛・右股関節人工関節）</span></legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="s_pain_joint" id="spj1" value="変化なし"><label for="spj1">変化なし</label></div>
+              <div class="check-item"><input type="radio" name="s_pain_joint" id="spj2" value="やや強い"><label for="spj2">やや強い</label></div>
+              <div class="check-item"><input type="radio" name="s_pain_joint" id="spj3" value="強い"><label for="spj3">強い</label></div>
+            </div>
+            <div class="mic-row" style="margin-top:8px">
+              <textarea id="f-joint-note" name="joint_note" rows="2"
+                        placeholder="具体的な状況（音声または入力）"
+                        aria-label="腰痛・股関節痛の内容。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-joint-note', this)"
+                      aria-label="腰痛・股関節痛の音声入力を開始">🎤</button>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">疼痛・痺れ等のその他訴え</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="s_pain" id="sp1" value="なし"><label for="sp1">なし</label></div>
+              <div class="check-item"><input type="radio" name="s_pain" id="sp2" value="あり"><label for="sp2">あり</label></div>
+            </div>
+            <div class="mic-row" style="margin-top:8px">
+              <textarea id="f-spain-note" name="spain_note" rows="2"
+                        placeholder="訴えの内容（音声または入力）"
+                        aria-label="その他疼痛・痺れの内容。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-spain-note', this)"
+                      aria-label="その他疼痛内容の音声入力を開始">🎤</button>
+            </div>
+          </fieldset>
+
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">転倒・ヒヤリハット</legend>
+            <div class="check-group grp-helper">
+              <div class="check-item"><input type="radio" name="s_fall" id="sfa1" value="なし"><label for="sfa1">なし</label></div>
+              <div class="check-item"><input type="radio" name="s_fall" id="sfa2" value="あり"><label for="sfa2">あり</label></div>
+            </div>
+            <div class="mic-row" style="margin-top:8px">
+              <textarea id="f-sfall-note" name="sfall_note" rows="2"
+                        placeholder="内容（音声または入力）"
+                        aria-label="転倒・ヒヤリハットの内容。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-sfall-note', this)"
+                      aria-label="転倒・ヒヤリハット内容の音声入力を開始">🎤</button>
+            </div>
+          </fieldset>
+        </div>
+
+        <!-- バイタル（医療職記入） -->
+        <div class="card" id="sec-vital">
+          <div class="sec-bar sec-medical" role="heading" aria-level="2">バイタル記録</div>
+          <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:10px">
+            空欄可。医療職が記入してください。
+          </p>
+          <div class="row2">
+            <div>
+              <label for="f-temp">体温（℃）</label>
+              <input type="text" id="f-temp" name="temp"
+                     inputmode="decimal" placeholder="36.5">
+            </div>
+            <div>
+              <label for="f-pulse">脈拍（回/分）</label>
+              <input type="text" id="f-pulse" name="pulse"
+                     inputmode="numeric" placeholder="70">
+            </div>
+          </div>
+          <div class="row2 field">
+            <div>
+              <label for="f-bph">血圧　収縮期（mmHg）</label>
+              <input type="text" id="f-bph" name="bph"
+                     inputmode="numeric" placeholder="120">
+            </div>
+            <div>
+              <label for="f-bpl">拡張期（mmHg）</label>
+              <input type="text" id="f-bpl" name="bpl"
+                     inputmode="numeric" placeholder="80">
+            </div>
+          </div>
+          <div class="field" style="max-width:50%">
+            <label for="f-spo2">酸素飽和度 SpO₂（%）</label>
+            <input type="text" id="f-spo2" name="spo2"
+                   inputmode="numeric" placeholder="98">
+          </div>
+        </div>
+
+        <!-- 眼科診療記録（眼科訪問診療時のみ表示） -->
+        <div class="card" id="sec-eye" style="display:none">
+          <div class="sec-bar sec-medical" role="heading" aria-level="2">眼科診療記録</div>
+          <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:10px">
+            空欄可。眼科医が記入してください。
+          </p>
+
+          <!-- 視力 -->
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:6px">
+              視力（矯正視力を含む）
+            </legend>
+            <div class="row2">
+              <div>
+                <label for="f-vacuity-r">右眼</label>
+                <input type="text" id="f-vacuity-r" name="vacuity_r"
+                       inputmode="decimal" placeholder="例：0.04（矯正）">
+              </div>
+              <div>
+                <label for="f-vacuity-l">左眼</label>
+                <input type="text" id="f-vacuity-l" name="vacuity_l"
+                       inputmode="decimal" placeholder="例：0.04（矯正）">
+              </div>
+            </div>
+            <p style="font-size:0.8125rem;color:var(--txt-sub);margin:8px 0 4px">
+              視力0.01未満の場合（該当すれば右眼・左眼それぞれ選択）
+            </p>
+            <div class="row2">
+              <div>
+                <label for="f-vacuity-r-low">右眼（測定不能域）</label>
+                <select id="f-vacuity-r-low" name="vacuity_r_low" aria-label="右眼の測定不能域">
+                  <option value="">該当なし</option>
+                  <option value="指数弁">指数弁</option>
+                  <option value="眼前手動弁">眼前手動弁</option>
+                  <option value="光覚弁">光覚弁</option>
+                  <option value="測定不能">測定不能</option>
+                </select>
+              </div>
+              <div>
+                <label for="f-vacuity-l-low">左眼（測定不能域）</label>
+                <select id="f-vacuity-l-low" name="vacuity_l_low" aria-label="左眼の測定不能域">
+                  <option value="">該当なし</option>
+                  <option value="指数弁">指数弁</option>
+                  <option value="眼前手動弁">眼前手動弁</option>
+                  <option value="光覚弁">光覚弁</option>
+                  <option value="測定不能">測定不能</option>
+                </select>
+              </div>
+            </div>
+          </fieldset>
+
+          <!-- 眼圧 -->
+          <div class="row2 field">
+            <div>
+              <label for="f-iop-r">眼圧　右眼（mmHg）</label>
+              <input type="text" id="f-iop-r" name="iop_r"
+                     inputmode="decimal" placeholder="例：16">
+              <div class="check-item" style="margin-top:6px">
+                <input type="checkbox" id="f-iop-r-na" name="iop_r_na"
+                       onchange="toggleIopField('r')">
+                <label for="f-iop-r-na">測定不能</label>
+              </div>
+            </div>
+            <div>
+              <label for="f-iop-l">眼圧　左眼（mmHg）</label>
+              <input type="text" id="f-iop-l" name="iop_l"
+                     inputmode="decimal" placeholder="例：16">
+              <div class="check-item" style="margin-top:6px">
+                <input type="checkbox" id="f-iop-l-na" name="iop_l_na"
+                       onchange="toggleIopField('l')">
+                <label for="f-iop-l-na">測定不能</label>
+              </div>
+            </div>
+          </div>
+
+          <!-- 眼底所見 -->
+          <div class="field">
+            <label for="f-fundus">眼底所見（網膜症・緑内障等の状態）</label>
+            <div class="mic-row">
+              <textarea id="f-fundus" name="fundus" rows="2"
+                        placeholder="所見を音声または入力"
+                        aria-label="眼底所見。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-fundus', this)"
+                      aria-label="眼底所見の音声入力を開始">🎤</button>
+            </div>
+          </div>
+
+          <!-- 自覚症状 -->
+          <div class="field">
+            <label for="f-eye-subjective">自覚症状（見え方の変化、痛み等）</label>
+            <div class="mic-row">
+              <textarea id="f-eye-subjective" name="eye_subjective" rows="2"
+                        placeholder="本人の訴えを音声または入力"
+                        aria-label="自覚症状。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-eye-subjective', this)"
+                      aria-label="自覚症状の音声入力を開始">🎤</button>
+            </div>
+          </div>
+
+          <!-- 他覚症状 -->
+          <div class="field">
+            <label for="f-eye-objective">他覚症状（医師・家族・ヘルパー等が気づいた見え方の変化）</label>
+            <div class="mic-row">
+              <textarea id="f-eye-objective" name="eye_objective" rows="2"
+                        placeholder="周囲が気づいた変化を音声または入力"
+                        aria-label="他覚症状。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-eye-objective', this)"
+                      aria-label="他覚症状の音声入力を開始">🎤</button>
+            </div>
+          </div>
+
+          <!-- 処方変更 -->
+          <div class="field">
+            <label for="f-eye-rx">処方変更（点眼薬等）</label>
+            <div class="mic-row">
+              <textarea id="f-eye-rx" name="eye_rx" rows="2"
+                        placeholder="変更内容を音声または入力（変更なしの場合は空欄でも可）"
+                        aria-label="点眼薬等の処方変更内容。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn"
+                      onclick="startVoice('f-eye-rx', this)"
+                      aria-label="処方変更内容の音声入力を開始">🎤</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 母親の状態（ヘルパー記入） -->
+        <div class="card" id="sec-haha">
+          <div class="sec-bar sec-helper" role="heading" aria-level="2">母親の状態</div>
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">体調</legend>
+            <div class="check-group grp-helper">
+
+              <div class="check-item"><input type="radio" name="mom" id="mm1" value="良好"><label for="mm1">良好</label></div>
+              <div class="check-item"><input type="radio" name="mom" id="mm2" value="不良"><label for="mm2">不良</label></div>
+              <div class="check-item"><input type="radio" name="mom" id="mm3" value="不在"><label for="mm3">不在</label></div>
+            </div>
+          </fieldset>
+          <div class="mic-row field">
+            <textarea id="f-mom-note" name="mom_note" rows="2"
+                      placeholder="特記事項（音声または入力）"
+                      aria-label="母親の状態の特記事項。音声入力するには右のマイクボタンを押してください"></textarea>
+            <button type="button" class="mic-btn"
+                    onclick="startVoice('f-mom-note', this)"
+                    aria-label="母親の特記事項の音声入力を開始">🎤</button>
+          </div>
+        </div>
+
+        <!-- 実施内容（ヘルパー記入） -->
+        <div class="card" id="sec-jisshi">
+          <div class="sec-bar sec-helper" role="heading" aria-level="2">実施内容</div>
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">
+              実施したサービス（複数選択可）
+            </legend>
+            <!-- サービス種別に応じてJSで動的に切り替え -->
+            <div id="done-checks" class="check-group grp-helper" role="group"
+                 aria-label="実施したサービスをすべてチェックしてください">
+              <!-- 初期表示：家事援助・入浴介助系 -->
+              <div class="check-item"><input type="checkbox" id="sv1" name="done" value="掃除"><label for="sv1">掃除</label></div>
+              <div class="check-item"><input type="checkbox" id="sv2" name="done" value="洗濯"><label for="sv2">洗濯</label></div>
+              <div class="check-item"><input type="checkbox" id="sv3" name="done" value="調理補助"><label for="sv3">調理補助</label></div>
+              <div class="check-item"><input type="checkbox" id="sv4" name="done" value="入浴介助"><label for="sv4">入浴介助</label></div>
+              <div class="check-item"><input type="checkbox" id="sv5" name="done" value="服薬確認"><label for="sv5">服薬確認</label></div>
+              <div class="check-item"><input type="checkbox" id="sv6" name="done" value="その他"><label for="sv6">その他</label></div>
+            </div>
+          </fieldset>
+
+          <!-- 活動随行（自費・第三者負担）選択時のみ表示 -->
+          <div id="sec-katsudo-extra" style="display:none;margin-top:14px">
+            <fieldset style="border:none;padding:0" class="field">
+              <label for="f-katsudo-name">案件名・活動内容</label>
+              <div class="mic-row">
+                <textarea id="f-katsudo-name" name="katsudo_name" rows="2"
+                          placeholder="例：〇〇小学校 福祉体験授業（音声または入力）"
+                          aria-label="案件名・活動内容。音声入力するには右のマイクボタンを押してください"></textarea>
+                <button type="button" class="mic-btn"
+                        onclick="startVoice('f-katsudo-name', this)"
+                        aria-label="案件名・活動内容の音声入力を開始">🎤</button>
+              </div>
+            </fieldset>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">費用負担元</legend>
+              <select id="f-katsudo-payer" name="katsudo_payer"
+                      aria-label="費用負担元を選択してください"
+                      onchange="toggleKatsudoPayerOther()">
+                <option value="">-- 選択してください --</option>
+                <option value="社会福祉協議会負担">社会福祉協議会負担</option>
+                <option value="中央区負担">中央区負担</option>
+                <option value="依頼元自己負担">依頼元自己負担</option>
+                <option value="その他">その他</option>
+              </select>
+              <div id="f-katsudo-payer-other-wrap" style="display:none;margin-top:6px">
+                <input type="text" id="f-katsudo-payer-other" name="katsudo_payer_other"
+                       placeholder="負担元・詳細を入力"
+                       aria-label="その他の場合の負担元・詳細を入力してください">
+              </div>
+            </fieldset>
+          </div>
+        </div>
+
+        <!-- 医療・投薬関連（医療職記入） -->
+        <div class="card" id="sec-iryo">
+          <div class="sec-bar sec-medical" role="heading" aria-level="2">医療・投薬関連</div>
+          <fieldset style="border:none;padding:0" class="field">
+            <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">処方薬の変更</legend>
+            <div class="check-group grp-medical">
+              <div class="check-item"><input type="radio" name="rx" id="rx1" value="なし"><label for="rx1">なし</label></div>
+              <div class="check-item"><input type="radio" name="rx" id="rx2" value="あり"><label for="rx2">あり</label></div>
+            </div>
+          </fieldset>
+          <div class="mic-row field">
+            <textarea id="f-rx-note" name="rx_note" rows="2"
+                      placeholder="変更内容（音声または入力）"
+                      aria-label="処方薬の変更内容。音声入力するには右のマイクボタンを押してください"></textarea>
+            <button type="button" class="mic-btn"
+                    onclick="startVoice('f-rx-note', this)"
+                    aria-label="処方薬変更内容の音声入力を開始">🎤</button>
+          </div>
+        </div>
+
+        <!-- 申し送り（共通） -->
+        <div class="card">
+          <div class="sec-bar sec-common" role="heading" aria-level="2">申し送り・連絡事項</div>
+          <p class="caution" role="note">
+            緊急度の高い内容は冒頭に【要確認】と記入してください。未実施だったケアがある場合は、内容と理由もこの欄にご記入ください。
+          </p>
+          <div class="mic-row">
+            <textarea id="f-okuri" name="okuri" rows="8"
+                      placeholder="次の援助者への申し送り事項（音声または入力）。未実施だったケアがある場合は、その内容と理由もここにご記入ください"
+                      aria-label="申し送り・連絡事項。未実施だったケアがある場合はその内容と理由もここに記入してください。緊急の場合は冒頭に要確認と入力してください。音声入力するには右のマイクボタンを押してください"></textarea>
+            <button type="button" class="mic-btn"
+                    onclick="startVoice('f-okuri', this)"
+                    aria-label="申し送り事項の音声入力を開始">🎤</button>
+          </div>
+        </div>
+
+        <!-- 保存・クリア -->
+        <div style="display:flex;gap:8px">
+          <button type="button" class="btn-secondary" onclick="clearForm()">
+            クリア
+          </button>
+          <button type="submit" id="save-btn" class="btn-primary" style="flex:1">
+            記録を保存する
+          </button>
+        </div>
+
+      </form>
+    </main>
+
+    <!-- ===== 本人・家族申告フォーム ===== -->
+    <main id="page-self" class="page"
+          role="main" aria-label="本人・家族申告入力画面">
+
+      <div style="display:flex;padding:4px 0 8px">
+        <button type="button" class="btn-secondary" onclick="requestExit('self')"
+                aria-label="入力を中断してホーム画面に戻ります。保存するかどうかを選べます">
+          ← ホームに戻る
+        </button>
+      </div>
+
+      <div id="self-report-form">
+        <form id="self-form" onsubmit="saveSelfReport(event)" novalidate>
+
+          <!-- ヘッダ説明 -->
+          <div class="card">
+            <div class="sec-bar sec-self" role="heading" aria-level="2">本人・家族申告</div>
+            <p style="font-size:0.875rem;color:var(--txt-sub);margin-top:8px">
+              利用者本人または同居家族が体調・困りごと・希望するケアを入力します。この記録は援助者の申し送りとは区別して管理されます。
+            </p>
+          </div>
+
+          <!-- 基本情報 -->
+          <div class="card">
+            <div class="sec-bar sec-common" role="heading" aria-level="2">基本情報</div>
+
+            <div class="field">
+              <label for="sf-subject">申告者</label>
+              <select id="sf-subject" name="sf_subject" aria-label="申告者を選択してください"
+                      onchange="updateSelfForm()">
+                <option value="旦">旦（本人）</option>
+                <option value="早南江">早南江（家族）</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="sf-date">日付 <span aria-hidden="true">*</span></label>
+              <input type="date" id="sf-date" name="sf_date"
+                     required aria-required="true">
+            </div>
+
+            <div class="row2 field">
+              <div>
+                <label for="sf-start">記録時刻　開始</label>
+                <input type="time" id="sf-start" name="sf_start">
+              </div>
+              <div>
+                <label for="sf-end">記録時刻　終了</label>
+                <input type="time" id="sf-end" name="sf_end">
+              </div>
+            </div>
+          </div>
+
+          <!-- 体調（旦） -->
+          <div class="card" id="sf-sec-dan">
+            <div class="sec-bar sec-self" role="heading" aria-level="2">体調・状態（旦）</div>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">体調全般</legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_condition" id="sfc1" value="良好"><label for="sfc1">良好</label></div>
+                <div class="check-item"><input type="radio" name="sf_condition" id="sfc2" value="やや不良"><label for="sfc2">やや不良</label></div>
+                <div class="check-item"><input type="radio" name="sf_condition" id="sfc3" value="不良"><label for="sfc3">不良</label></div>
+              </div>
+            </fieldset>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">気分・精神状態</legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_mood" id="sfm1" value="穏やか"><label for="sfm1">穏やか</label></div>
+                <div class="check-item"><input type="radio" name="sf_mood" id="sfm2" value="不安・緊張あり"><label for="sfm2">不安・緊張あり</label></div>
+                <div class="check-item"><input type="radio" name="sf_mood" id="sfm3" value="その他"><label for="sfm3">その他</label></div>
+              </div>
+            </fieldset>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">食事・水分摂取</legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_food" id="sff1" value="摂取できている"><label for="sff1">摂取できている</label></div>
+                <div class="check-item"><input type="radio" name="sf_food" id="sff2" value="少ない"><label for="sff2">少ない</label></div>
+                <div class="check-item"><input type="radio" name="sf_food" id="sff3" value="摂取できていない"><label for="sff3">摂取できていない</label></div>
+              </div>
+            </fieldset>
+
+            <!-- 見えにくさ（旦専用） -->
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">
+                見えにくさ・視覚的困りごと
+                <span style="font-size:0.75rem;font-weight:400;margin-left:4px">（緑内障による視野・見え方の変化など）</span>
+              </legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_vision" id="sfv1" value="変化なし（いつも通り）"><label for="sfv1">変化なし（いつも通り）</label></div>
+                <div class="check-item"><input type="radio" name="sf_vision" id="sfv2" value="やや見えにくい"><label for="sfv2">やや見えにくい</label></div>
+                <div class="check-item"><input type="radio" name="sf_vision" id="sfv3" value="かなり見えにくい"><label for="sfv3">かなり見えにくい</label></div>
+              </div>
+              <div class="mic-row" style="margin-top:8px">
+                <textarea id="sf-vision-note" name="sf_vision_note" rows="2"
+                          placeholder="具体的な困りごと（音声または入力）"
+                          aria-label="見えにくさの具体的な内容。音声入力するには右のマイクボタンを押してください"></textarea>
+                <button type="button" class="mic-btn" onclick="startVoice('sf-vision-note',this)"
+                        aria-label="見えにくさの音声入力を開始">🎤</button>
+              </div>
+            </fieldset>
+          </div>
+
+          <!-- 体調（早南江） -->
+          <div class="card" id="sf-sec-sanae" style="display:none">
+            <div class="sec-bar sec-self" role="heading" aria-level="2">体調・状態（早南江）</div>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">体調全般</legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_s_condition" id="sfsc1" value="良好"><label for="sfsc1">良好</label></div>
+                <div class="check-item"><input type="radio" name="sf_s_condition" id="sfsc2" value="やや不良"><label for="sfsc2">やや不良</label></div>
+                <div class="check-item"><input type="radio" name="sf_s_condition" id="sfsc3" value="不良"><label for="sfsc3">不良</label></div>
+              </div>
+            </fieldset>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">動悸・息切れ・胸部症状<span style="font-size:0.75rem;font-weight:400;margin-left:4px">（心房細動・急性貧血の既往あり）</span></legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_cardiac" id="sfca1" value="なし"><label for="sfca1">なし</label></div>
+                <div class="check-item"><input type="radio" name="sf_cardiac" id="sfca2" value="あり"><label for="sfca2">あり</label></div>
+              </div>
+              <div class="mic-row" style="margin-top:8px">
+                <textarea id="sf-cardiac-note" name="sf_cardiac_note" rows="2"
+                          placeholder="症状の内容（音声または入力）"
+                          aria-label="動悸・胸部症状の内容。音声入力するには右のマイクボタンを押してください"></textarea>
+                <button type="button" class="mic-btn" onclick="startVoice('sf-cardiac-note',this)"
+                        aria-label="動悸・胸部症状の音声入力を開始">🎤</button>
+              </div>
+            </fieldset>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">腰痛・股関節痛（右）<span style="font-size:0.75rem;font-weight:400;margin-left:4px">（慢性腰痛・右股関節人工関節）</span></legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_joint" id="sfj1" value="変化なし"><label for="sfj1">変化なし</label></div>
+                <div class="check-item"><input type="radio" name="sf_joint" id="sfj2" value="やや強い"><label for="sfj2">やや強い</label></div>
+                <div class="check-item"><input type="radio" name="sf_joint" id="sfj3" value="強い"><label for="sfj3">強い</label></div>
+              </div>
+              <div class="mic-row" style="margin-top:8px">
+                <textarea id="sf-joint-note" name="sf_joint_note" rows="2"
+                          placeholder="具体的な状況（音声または入力）"
+                          aria-label="腰痛・股関節痛の内容。音声入力するには右のマイクボタンを押してください"></textarea>
+                <button type="button" class="mic-btn" onclick="startVoice('sf-joint-note',this)"
+                        aria-label="腰痛・股関節痛の音声入力を開始">🎤</button>
+              </div>
+            </fieldset>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">食事・水分摂取</legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_s_food" id="sfsfoo1" value="摂取できている"><label for="sfsfoo1">摂取できている</label></div>
+                <div class="check-item"><input type="radio" name="sf_s_food" id="sfsfoo2" value="少ない"><label for="sfsfoo2">少ない</label></div>
+                <div class="check-item"><input type="radio" name="sf_s_food" id="sfsfoo3" value="摂取できていない"><label for="sfsfoo3">摂取できていない</label></div>
+              </div>
+            </fieldset>
+          </div>
+
+          <!-- バイタル自己測定（任意・参考値） -->
+          <div class="card">
+            <div class="sec-bar sec-self" role="heading" aria-level="2">バイタル自己測定（任意・参考値）</div>
+            <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:10px">
+              音声体温計・音声血圧計・Apple Watch等で測定した参考値を記録できます。空欄可。
+            </p>
+            <div class="row2">
+              <div>
+                <label for="sf-temp">体温（℃）</label>
+                <input type="text" id="sf-temp" name="sf_temp" inputmode="decimal" placeholder="36.5">
+              </div>
+              <div>
+                <label for="sf-pulse">脈拍（回/分）</label>
+                <input type="text" id="sf-pulse" name="sf_pulse" inputmode="numeric" placeholder="70">
+              </div>
+            </div>
+            <div class="row2 field">
+              <div>
+                <label for="sf-bph">血圧　収縮期（mmHg）</label>
+                <input type="text" id="sf-bph" name="sf_bph" inputmode="numeric" placeholder="120">
+              </div>
+              <div>
+                <label for="sf-bpl">拡張期（mmHg）</label>
+                <input type="text" id="sf-bpl" name="sf_bpl" inputmode="numeric" placeholder="80">
+              </div>
+            </div>
+            <div class="field" style="max-width:50%">
+              <label for="sf-spo2">酸素飽和度 SpO₂（%）</label>
+              <input type="text" id="sf-spo2" name="sf_spo2" inputmode="numeric" placeholder="98">
+            </div>
+          </div>
+
+          <!-- 希望するケア・申し送り -->
+          <div class="card">
+            <div class="sec-bar sec-self" role="heading" aria-level="2">次の援助者への希望・申し送り事項</div>
+            <p class="caution" role="note">
+              緊急度の高い内容は冒頭に【要確認】と記入してください
+            </p>
+            <div class="mic-row">
+              <textarea id="sf-okuri" name="sf_okuri" rows="7"
+                        placeholder="希望するケア内容・体調の補足・次の援助者への申し送り（音声または入力）"
+                        aria-label="次の援助者への希望・申し送り事項。緊急の場合は冒頭に要確認と入力してください。音声入力するには右のマイクボタンを押してください"></textarea>
+              <button type="button" class="mic-btn" onclick="startVoice('sf-okuri',this)"
+                      aria-label="申し送り・希望事項の音声入力を開始">🎤</button>
+            </div>
+          </div>
+
+          <!-- ピン留め -->
+          <div class="card">
+            <div class="check-item" style="background:var(--cc-hdr);border-radius:8px;padding:12px">
+              <input type="checkbox" id="sf-pin" name="sf_pin">
+              <label for="sf-pin" style="font-size:1rem;font-weight:600;color:#7a4f00">
+                📌　この申告をホーム画面にピン留めする
+              </label>
+            </div>
+            <p style="font-size:0.8125rem;color:var(--txt-sub);margin-top:8px">
+              オンにすると、次の援助者がアプリを開いた際にホーム画面の最上部に表示されます（最大3件・新しいものが優先されます）。ピン留めの解除はこの画面から編集してのみ可能です。
+            </p>
+          </div>
+
+          <div style="display:flex;gap:8px">
+            <button type="button" class="btn-secondary" onclick="clearSelfForm()">クリア</button>
+            <button type="submit" id="sf-save-btn" class="btn-primary" style="flex:1">申告を保存する</button>
+          </div>
+
+        </form>
+      </div>
+    </main>
+
+    <!-- ===== 過去ログ ===== -->
+    <main id="page-log" class="page"
+          role="main" aria-label="過去ログ画面">
+
+      <div class="card">
+        <h2 class="card-title">絞り込み・並べ替え</h2>
+        <div class="filter-row">
+          <div>
+            <label for="filter-record">記録種別</label>
+            <select id="filter-record" onchange="onRecordFilterChange()"
+                    aria-label="記録の種別で絞り込み">
+              <option value="all">すべての記録</option>
+              <option value="self">本人・家族の申告記録</option>
+              <option value="staff">援助職の記録</option>
+            </select>
+          </div>
+          <div>
+            <label for="filter-type">サービス種別</label>
+            <select id="filter-type" onchange="renderLog()"
+                    aria-label="サービス種別で絞り込み">
+              <option value="">すべて</option>
+              <option>家事援助</option>
+              <option>入浴介助</option>
+              <option>訪問看護</option>
+              <option>訪問鍼灸</option>
+              <option>同行援護</option>
+              <option>訪問診療</option>
+              <option>眼科訪問診療</option>
+              <option>訪問服薬指導</option>
+              <option>訪問リハビリ</option>
+              <option>移動支援</option>
+              <option>通院介助</option>
+              <option>就労支援特別事業</option>
+              <option>活動随行</option>
+              <option>モニタリング</option>
+              <option>その他</option>
+            </select>
+          </div>
+          <div>
+            <label for="filter-subject">対象者</label>
+            <select id="filter-subject" onchange="renderLog()"
+                    aria-label="対象者で絞り込み">
+              <option value="">全員</option>
+              <option value="旦">旦</option>
+              <option value="早南江">早南江</option>
+            </select>
+          </div>
+          <div>
+            <label for="filter-period">期間</label>
+            <select id="filter-period" onchange="renderLog()"
+                    aria-label="記録の期間で絞り込み">
+              <option value="all">全期間（6ヶ月分）</option>
+              <option value="7">本日から1週間以内</option>
+              <option value="14">本日から2週間以内</option>
+              <option value="30">本日から1ヶ月以内</option>
+              <option value="90">本日から3ヶ月以内</option>
+            </select>
+          </div>
+          <div>
+            <label for="filter-sort">並べ替え</label>
+            <select id="filter-sort" onchange="renderLog()"
+                    aria-label="日付の並べ替え">
+              <option value="new">新しい順</option>
+              <option value="old">古い順</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div id="log-list" role="list" aria-label="過去の記録一覧"
+           aria-live="polite"></div>
+
+    </main>
+
+  </div><!-- /#app -->
+
+  <!-- ===== 設定 ===== -->
+  <main id="page-settings" class="page"
+        role="main" aria-label="設定画面">
+
+    <!-- ── スケジュール編集 ── -->
+    <section class="card" aria-labelledby="s-sched-heading">
+      <h2 class="card-title" id="s-sched-heading">週間定例訪問スケジュール</h2>
+      <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:10px">
+        ホーム画面の「本日の定例訪問」に表示されます。
+      </p>
+      <div id="sched-list" role="list" aria-label="スケジュール一覧"></div>
+      <div style="margin-top:10px">
+        <div class="row2">
+          <div>
+            <label for="s-sched-day">曜日</label>
+            <select id="s-sched-day" aria-label="曜日を選択">
+              <option value="1">月曜</option>
+              <option value="2">火曜</option>
+              <option value="3">水曜</option>
+              <option value="4">木曜</option>
+              <option value="5">金曜</option>
+              <option value="6">土曜</option>
+              <option value="0">日曜</option>
+            </select>
+          </div>
+          <div>
+            <label for="s-sched-svc">サービス名</label>
+            <input type="text" id="s-sched-svc" placeholder="例：家事援助"
+                   aria-label="サービス名を入力">
+          </div>
+        </div>
+        <div class="row2 field">
+          <div>
+            <label for="s-sched-start">開始時刻</label>
+            <input type="time" id="s-sched-start">
+          </div>
+          <div>
+            <label for="s-sched-end">終了時刻</label>
+            <input type="time" id="s-sched-end">
+          </div>
+        </div>
+        <button class="btn-primary" onclick="addSchedItem()" style="margin-top:4px"
+                aria-label="スケジュールを追加">追加する</button>
+      </div>
+    </section>
+
+    <!-- ── 事業所一覧 ── -->
+    <section class="card" aria-labelledby="s-office-heading">
+      <h2 class="card-title" id="s-office-heading">事業所一覧</h2>
+      <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:10px">
+        記録フォームの「事業所名」セレクトに表示されます。対象者（旦・早南江・両方）も設定できます。
+      </p>
+      <div id="office-list" role="list" aria-label="事業所一覧"></div>
+      <div style="margin-top:10px">
+        <div class="field">
+          <label for="s-office-name">事業所名</label>
+          <input type="text" id="s-office-name" placeholder="事業所名を入力"
+                 aria-label="追加する事業所名を入力">
+        </div>
+        <div class="field">
+          <label for="s-office-for">対象者</label>
+          <select id="s-office-for" aria-label="この事業所を利用する対象者">
+            <option value="both">両方（旦・早南江）</option>
+            <option value="dan">旦のみ</option>
+            <option value="sanae">早南江のみ</option>
+          </select>
+        </div>
+        <button class="btn-primary" onclick="addOfficeItem()"
+                aria-label="事業所を追加">追加する</button>
+      </div>
+    </section>
+
+    <!-- ── 担当者一覧 ── -->
+    <section class="card" aria-labelledby="s-staff-heading">
+      <h2 class="card-title" id="s-staff-heading">担当者一覧</h2>
+      <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:10px">
+        記録フォームの「担当者氏名」セレクトに表示されます。複数事業所に所属する担当者も1つの名前で管理できます。
+      </p>
+      <div id="staff-list" role="list" aria-label="担当者一覧"></div>
+      <div style="margin-top:10px">
+        <div class="field">
+          <label for="s-staff-name">担当者名</label>
+          <input type="text" id="s-staff-name" placeholder="担当者名を入力"
+                 aria-label="追加する担当者名を入力">
+        </div>
+        <button class="btn-primary" onclick="addStaffItem()"
+                aria-label="担当者を追加">追加する</button>
+      </div>
+    </section>
+
+    <!-- ── データ管理 ── -->
+    <section class="card" aria-labelledby="s-data-heading">
+      <h2 class="card-title" id="s-data-heading">データ管理</h2>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn-secondary" onclick="exportData()"
+                aria-label="記録データをJSONファイルとしてエクスポートします">
+          記録データをエクスポート（バックアップ）
+        </button>
+        <button class="btn-secondary" onclick="openImportModal()"
+                aria-label="バックアップしたJSONファイルから記録データをインポート（復元）します">
+          記録データをインポート（復元）
+        </button>
+        <button class="btn-danger" onclick="deleteAllData()"
+                aria-label="すべての記録データを削除します。この操作は元に戻せません">
+          すべての記録を削除する
+        </button>
+      </div>
+    </section>
+
+    <!-- ── PIN変更（オーナーのみ） ── -->
+    <section class="card" aria-labelledby="s-pin-heading" id="sec-pin-change">
+      <h2 class="card-title" id="s-pin-heading">PINの変更</h2>
+      <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:10px">
+        クラウド（GAS）接続時は、ここでの変更が次回ログインからそのまま有効になります。
+        クラウド未接続の場合は新しいPINのハッシュ値のみを計算するので、表示された値を <code>config.js</code> の該当箇所に貼り付けてGitHubにpushしてください。
+      </p>
+
+      <div class="field">
+        <h3 style="font-size:0.9375rem;font-weight:600;margin-bottom:8px">オーナー用PIN</h3>
+        <div class="field">
+          <label for="pin-owner-current">現在のPIN</label>
+          <input type="password" id="pin-owner-current" inputmode="numeric" maxlength="4"
+                 aria-label="オーナー用の現在のPINを4桁で入力してください">
+        </div>
+        <div class="field">
+          <label for="pin-owner-new">新しいPIN</label>
+          <input type="password" id="pin-owner-new" inputmode="numeric" maxlength="4"
+                 aria-label="オーナー用の新しいPINを4桁で入力してください">
+        </div>
+        <div class="field">
+          <label for="pin-owner-confirm">新しいPIN（確認）</label>
+          <input type="password" id="pin-owner-confirm" inputmode="numeric" maxlength="4"
+                 aria-label="オーナー用の新しいPINをもう一度入力して確認してください">
+        </div>
+        <button class="btn-primary" onclick="changePin('owner')" style="margin-top:8px"
+                aria-label="オーナー用PINのハッシュ値を計算します">PINを変更</button>
+        <p id="pin-owner-status" role="status" aria-live="polite"
+           style="font-size:0.875rem;margin-top:8px;min-height:1.2em"></p>
+        <div id="pin-owner-result" style="display:none;margin-top:8px">
+          <label for="pin-owner-hash">新しいハッシュ値（config.js の PIN_HASH_OWNER に貼り付け）</label>
+          <textarea id="pin-owner-hash" rows="2" readonly
+                    aria-label="新しいオーナー用PINのハッシュ値。コピーしてconfig.jsに貼り付けてください"
+                    style="width:100%;font-size:0.75rem;font-family:monospace;resize:vertical;
+                           border:1px solid var(--border);border-radius:var(--rad-md);padding:8px;
+                           background:var(--bg);color:var(--txt)"></textarea>
+          <button class="btn-secondary" onclick="copyPinHash('owner')" style="margin-top:6px"
+                  aria-label="オーナー用の新しいハッシュ値をクリップボードにコピーします">コピーする</button>
+        </div>
+      </div>
+
+      <div class="field" style="margin-top:20px">
+        <h3 style="font-size:0.9375rem;font-weight:600;margin-bottom:8px">ヘルパー用PIN</h3>
+        <p style="font-size:0.8125rem;color:var(--txt-sub);margin-bottom:8px">
+          ヘルパー用PINはオーナーが管理します。変更後は新しいPINをヘルパー全員に伝達してください。
+        </p>
+        <div class="field">
+          <label for="pin-helper-current">現在のPIN</label>
+          <input type="password" id="pin-helper-current" inputmode="numeric" maxlength="4"
+                 aria-label="ヘルパー用の現在のPINを4桁で入力してください">
+        </div>
+        <div class="field">
+          <label for="pin-helper-new">新しいPIN</label>
+          <input type="password" id="pin-helper-new" inputmode="numeric" maxlength="4"
+                 aria-label="ヘルパー用の新しいPINを4桁で入力してください">
+        </div>
+        <div class="field">
+          <label for="pin-helper-confirm">新しいPIN（確認）</label>
+          <input type="password" id="pin-helper-confirm" inputmode="numeric" maxlength="4"
+                 aria-label="ヘルパー用の新しいPINをもう一度入力して確認してください">
+        </div>
+        <button class="btn-primary" onclick="changePin('helper')" style="margin-top:8px"
+                aria-label="ヘルパー用PINのハッシュ値を計算します">PINを変更</button>
+        <p id="pin-helper-status" role="status" aria-live="polite"
+           style="font-size:0.875rem;margin-top:8px;min-height:1.2em"></p>
+        <div id="pin-helper-result" style="display:none;margin-top:8px">
+          <label for="pin-helper-hash">新しいハッシュ値（config.js の PIN_HASH_HELPER に貼り付け）</label>
+          <textarea id="pin-helper-hash" rows="2" readonly
+                    aria-label="新しいヘルパー用PINのハッシュ値。コピーしてconfig.jsに貼り付けてください"
+                    style="width:100%;font-size:0.75rem;font-family:monospace;resize:vertical;
+                           border:1px solid var(--border);border-radius:var(--rad-md);padding:8px;
+                           background:var(--bg);color:var(--txt)"></textarea>
+          <button class="btn-secondary" onclick="copyPinHash('helper')" style="margin-top:6px"
+                  aria-label="ヘルパー用の新しいハッシュ値をクリップボードにコピーします">コピーする</button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== 詳細モーダル ===== -->
+  <div id="modal-overlay" role="dialog" aria-modal="true"
+       aria-labelledby="modal-title">
+    <div id="modal-box">
+      <h2 id="modal-title" class="card-title" style="margin-bottom:12px">記録の詳細</h2>
+      <div id="modal-content"></div>
+      <div style="display:flex;gap:8px;margin-top:14px">
+        <button id="modal-print-btn" class="btn-secondary" style="flex:1"
+                onclick="printRecord()"
+                aria-label="この記録を印刷またはPDF保存します">印刷・PDF保存</button>
+        <button class="btn-secondary" style="flex:1"
+                onclick="closeModal()">閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== エクスポートモーダル（iOS Safari対応） ===== -->
+  <div id="export-modal" role="dialog" aria-modal="true"
+       aria-labelledby="export-modal-title"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+              z-index:200;align-items:flex-start;justify-content:center;
+              padding:20px;padding-top:calc(20px + env(safe-area-inset-top));
+              overflow-y:auto">
+    <div style="background:var(--surface);border-radius:var(--rad-lg);
+                width:100%;max-width:500px;padding:20px;margin-top:20px">
+      <h2 id="export-modal-title" class="card-title" style="margin-bottom:8px">
+        エクスポートデータ
+      </h2>
+      <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:10px">
+        iOSではファイルの直接保存ができないため、以下のJSONデータをコピーして
+        メモアプリ等に貼り付けて保存してください。
+        ファイル名：<span id="export-filename"></span>
+      </p>
+      <textarea id="export-json-area" rows="10" readonly
+                aria-label="エクスポートするJSONデータ。コピーして保存してください"
+                style="width:100%;font-size:0.75rem;font-family:monospace;
+                       resize:vertical;border:1px solid var(--border);
+                       border-radius:var(--rad-md);padding:8px;
+                       background:var(--bg);color:var(--txt)"></textarea>
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn-primary" style="flex:1"
+                onclick="copyExportData()"
+                id="export-copy-btn"
+                aria-label="JSONデータをクリップボードにコピーします">
+          コピーする
+        </button>
+        <button class="btn-secondary" style="flex:1"
+                onclick="closeExportModal()"
+                aria-label="エクスポートモーダルを閉じます">
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== インポートモーダル（データ復元） ===== -->
+  <div id="import-modal" role="dialog" aria-modal="true"
+       aria-labelledby="import-modal-title"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+              z-index:200;align-items:flex-start;justify-content:center;
+              padding:20px;padding-top:calc(20px + env(safe-area-inset-top));
+              overflow-y:auto">
+    <div style="background:var(--surface);border-radius:var(--rad-lg);
+                width:100%;max-width:500px;padding:20px;margin-top:20px">
+      <h2 id="import-modal-title" class="card-title" style="margin-bottom:8px" tabindex="-1">
+        データのインポート（復元）
+      </h2>
+      <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:12px">
+        エクスポートしたバックアップから記録データを復元します。
+        ファイルを選択するか、コピーしたJSONデータを下の欄に貼り付けてください。
+      </p>
+
+      <!-- ファイル選択（PC・Android向け） -->
+      <button class="btn-secondary" style="width:100%;margin-bottom:10px"
+              onclick="document.getElementById('import-file-input').click()"
+              aria-label="バックアップのJSONファイルを選択します">
+        JSONファイルを選択する
+      </button>
+      <input type="file" id="import-file-input" accept=".json,application/json"
+             style="position:absolute;width:1px;height:1px;opacity:0;overflow:hidden"
+             aria-label="バックアップのJSONファイル"
+             onchange="handleImportFile(event)">
+
+      <!-- 貼り付け欄（iOS Safari向け） -->
+      <label for="import-json-area"
+             style="display:block;font-size:0.875rem;margin-bottom:4px">
+        または、JSONデータを貼り付け
+      </label>
+      <textarea id="import-json-area" rows="8"
+                placeholder="ここにバックアップのJSONを貼り付けてください"
+                aria-label="復元するJSONデータを貼り付けてください"
+                style="width:100%;font-size:0.75rem;font-family:monospace;
+                       resize:vertical;border:1px solid var(--border);
+                       border-radius:var(--rad-md);padding:8px;
+                       background:var(--bg);color:var(--txt)"></textarea>
+
+      <!-- 復元方法の選択 -->
+      <fieldset style="border:1px solid var(--border);border-radius:var(--rad-md);
+                       padding:10px;margin-top:12px">
+        <legend style="font-size:0.875rem;font-weight:600;padding:0 4px">復元方法</legend>
+        <div class="check-item">
+          <input type="radio" name="import-mode" id="import-mode-merge" value="merge" checked>
+          <label for="import-mode-merge">
+            追加（マージ）：現在のデータを残し、バックアップを統合する
+          </label>
+        </div>
+        <div class="check-item" style="margin-top:6px">
+          <input type="radio" name="import-mode" id="import-mode-replace" value="replace">
+          <label for="import-mode-replace">
+            置き換え：現在のデータをすべて削除し、バックアップで上書きする
+          </label>
+        </div>
+      </fieldset>
+
+      <!-- 設定（スケジュール・事業所・担当者）も復元するか -->
+      <div class="check-item" style="margin-top:10px">
+        <input type="checkbox" id="import-include-settings" checked>
+        <label for="import-include-settings">
+          設定（スケジュール・事業所・担当者）も復元する
+        </label>
+      </div>
+
+      <p id="import-status" role="status" aria-live="polite"
+         style="font-size:0.875rem;color:var(--txt-sub);margin-top:10px;min-height:1.2em"></p>
+
+      <div style="display:flex;gap:8px;margin-top:12px">
+        <button class="btn-primary" style="flex:1"
+                onclick="runImport()"
+                aria-label="入力したデータを復元します">
+          復元する
+        </button>
+        <button class="btn-secondary" style="flex:1"
+                onclick="cancelImport()"
+                aria-label="インポートモーダルを閉じます">
+          閉じる
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== ホームに戻る確認モーダル（未保存の入力を保存するか選択） ===== -->
+  <div id="exit-modal" role="dialog" aria-modal="true"
+       aria-labelledby="exit-modal-title"
+       style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+              z-index:200;align-items:flex-start;justify-content:center;
+              padding:20px;padding-top:calc(20px + env(safe-area-inset-top));
+              overflow-y:auto">
+    <div style="background:var(--surface);border-radius:var(--rad-lg);
+                width:100%;max-width:420px;padding:20px;margin-top:20px">
+      <h2 id="exit-modal-title" class="card-title" style="margin-bottom:8px">
+        ホームに戻りますか？
+      </h2>
+      <p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:16px">
+        入力中の内容はまだ保存されていません。保存してから戻るか、保存せずに戻るか選んでください。
+      </p>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn-primary" onclick="exitSaveAndGoHome()"
+                aria-label="入力中の内容を保存してホーム画面に戻ります">
+          保存してホームに戻る
+        </button>
+        <button class="btn-danger" onclick="exitDiscardAndGoHome()"
+                aria-label="入力中の内容を保存せずにホーム画面に戻ります">
+          保存せずにホームに戻る
+        </button>
+        <button class="btn-secondary" onclick="closeExitModal()"
+                aria-label="この確認を閉じて入力画面に戻ります">
+          入力に戻る（キャンセル）
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 印刷専用エリア（@media printのみ表示） ===== -->
+  <div id="print-area" aria-hidden="true"></div>
+
+  <script src="config.js"></script>
+  <script>
+    /* ─── V2: セッション認証ガード ─────────────────────
+     * pin.htmlでの認証を経ずに直接アクセスされた場合はindex.htmlへ戻す。
+     * ロール（helper/owner）はStep2の以降のサブステップで各所のUI制御に使う。
+     */
+    const currentSession = getSession();
+    const userRole = currentSession ? currentSession.role : null;
+    if (!currentSession) {
+      location.href = 'index.html';
+    }
+
+    /* ─── V2: home.htmlからの遷移先指定（?view=form / ?view=self） ─── */
+    const initialView = new URLSearchParams(location.search).get('view');
+
+    /* ─── V2: home.htmlの過去ログから編集を開く（?edit= / ?editSelf=） ─── */
+    const editIdParam     = new URLSearchParams(location.search).get('edit');
+    const editSelfIdParam = new URLSearchParams(location.search).get('editSelf');
+
+    /* ─── V2: view/edit/editSelfのいずれの指定もない直アクセスはhome.htmlへ戻す ───
+     * このファイルは記録入力・本人申告入力・編集専用のサブ画面であり、
+     * home.htmlを経由しないホーム表示（V1の名残のpage-home）は行わない。
+     * ブックマーク・URL直接入力等で view= 等の指定なしにアクセスされた場合、
+     * home.htmlには存在する「作業終了」ボタンやロール別UI制御が
+     * このファイル内のpage-homeには効かず、ログアウトできなくなるため。
+     */
+    if (currentSession && !initialView && !editIdParam && !editSelfIdParam) {
+      location.href = 'home.html';
+    }
+
+    /* ─── V2: ロール別UI制御 ───────────────────────────
+     * ヘルパー：設定タブ非表示、印刷・PDF保存ボタン非表示
+     * （削除ボタン非表示・過去ログ編集の当日制限・ピン留め解除の当日制限は
+     *   renderLog() / editSelfRecord() 内で個別に制御）
+     */
+    function applyRoleRestrictions() {
+      if (userRole === 'owner') return;
+      const settingsTab = document.getElementById('tab-settings');
+      if (settingsTab) settingsTab.style.display = 'none';
+      const printBtn = document.getElementById('modal-print-btn');
+      if (printBtn) printBtn.style.display = 'none';
+    }
+
+    /* ─── 定数 ─────────────────────────────────────── */
+    const STORE_KEY   = 'hikitsugi_v2';
+    const SIX_MONTHS  = 180 * 24 * 60 * 60 * 1000;
+    const MEDICAL_SVC = new Set(['訪問看護','訪問鍼灸','訪問診療','訪問服薬指導','訪問リハビリ']);
+
+    // 設定データのストレージキー
+    const SCHED_KEY  = 'hikitsugi_schedule';
+    const OFFICE_KEY = 'hikitsugi_offices';
+    const STAFF_KEY  = 'hikitsugi_staff';
+
+    // ── 設定データのロード・セーブ ────────────────────────
+    function loadSetting(key, fallback) {
+      try {
+        const v = localStorage.getItem(key);
+        return v ? JSON.parse(v) : fallback;
+      } catch(e) { return fallback; }
+    }
+    function saveSetting(key, val) {
+      try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
+    }
+
+    /* ─── V2: 設定データ（事業所・担当者）のクラウド一元管理 ─────
+     * このファイルの記録フォームで使うのは事業所一覧・担当者一覧のみ
+     * （週間スケジュールの表示はhome.html側のみで使用するため対象外）。
+     * 起動のたびにGAS経由で最新値を取得し、キャッシュ（cloudSettings）に
+     * 保持する。通信失敗・GAS_URL未設定時はローカルのキャッシュ値、
+     * それも無ければハードコードの初期値にフォールバックする。
+     */
+    let cloudSettings = { offices: null, staff: null };
+
+    async function loadCloudSettings() {
+      const remote = await fetchCloudSettings(); // config.js
+      if (remote) {
+        applyRemoteSetting('offices', remote.offices, OFFICE_KEY);
+        applyRemoteSetting('staff',   remote.staff,   STAFF_KEY);
+      } else {
+        // オフライン時のフォールバック：直近のローカルキャッシュ
+        cloudSettings.offices = loadSetting(OFFICE_KEY, null);
+        cloudSettings.staff   = loadSetting(STAFF_KEY, null);
+      }
+    }
+
+    // 表示の基準は常にクラウド側の値（cloudSettings）とする。一方、オフライン用の
+    // ローカルキャッシュ（localStorage）は、クラウド側が空配列を返した場合は
+    // 上書きしない（＝端末に残っている値を保持する）。移行直後にクラウド側が
+    // まだ空のとき、端末に残っていた唯一のコピーを空データで消さないための安全策。
+    function applyRemoteSetting(kind, remoteArr, localKey) {
+      if (!Array.isArray(remoteArr)) return;
+      cloudSettings[kind] = remoteArr;
+      if (remoteArr.length > 0) saveSetting(localKey, remoteArr);
+    }
+
+    /* ─── V2: 過去ログ（クラウド）のキャッシュ ─────────────────
+     * 記録データは端末に永続保存しないため、編集開始時（?edit=/?editSelf=）や
+     * 本人・家族申告のピン留め上限判定のために、必要になったタイミングで
+     * クラウドから取得してこの配列にキャッシュする（ページ内でのみ保持・
+     * リロードすれば消える。localStorageには書き込まない）。
+     */
+    let cloudLog = [];
+    let cloudLogLoaded = false;
+
+    async function loadCloudLog() {
+      if (cloudLogLoaded) return; // このページ滞在中に一度取得すれば十分
+      const data = await fetchCloudLog(); // config.js
+      cloudLog = Array.isArray(data) ? data : [];
+      cloudLogLoaded = true;
+    }
+
+    // ── スケジュール（設定保存版） ──────────────────────────
+    // 既存のハードコードを初期値として使い、設定で上書き可能にする
+    const SCHEDULE_DEFAULT = {
+      1: [
+        { time: '10:15–11:00', svc: '訪問鍼灸' },
+        { time: '10:30–12:00', svc: '家事援助' },
+      ],
+      2: [
+        { time: '11:20–12:40', svc: '訪問看護' },
+        { time: '13:30–14:30', svc: '本人：家事援助' },
+        { time: '14:30–15:30', svc: '母：家事援助' },
+        { time: '15:30–16:30', svc: '入浴介助' },
+      ],
+      3: [
+        { time: '9:00–13:00',  svc: '同行援護' },
+        { time: '12:20–13:20', svc: '母：訪問リハ' },
+        { time: '16:00–17:00', svc: '家事援助' },
+        { time: '17:00–18:00', svc: '入浴介助' },
+      ],
+      4: [
+        { time: '11:30–12:30', svc: '訪問診療（第1・3木）' },
+      ],
+      5: [
+        { time: '9:00–10:00',  svc: '訪問服薬指導（第1・3金）' },
+        { time: '12:50–13:50', svc: '入浴介助' },
+        { time: '13:50–14:50', svc: '家事援助' },
+        { time: '16:00–16:30', svc: '訪問鍼灸' },
+      ],
+      6: [
+        { time: '12:00–13:00', svc: '母：買い物同行' },
+      ],
+      0: [
+        { time: '13:00–14:30', svc: '母：訪問リハ' },
+        { time: '14:30–15:20', svc: '本人：訪問リハ' },
+        { time: '15:30–16:30', svc: '本人：家事援助' },
+        { time: '16:30–17:30', svc: '入浴介助' },
+        { time: '17:30–18:00', svc: '母：家事援助' },
+      ],
+    };
+
+    // 設定から読み込んだスケジュールを取得
+    // フォーマット: [{dow:1, time:'10:15–11:00', svc:'家事援助'}, ...]
+    function getScheduleItems() {
+      return loadSetting(SCHED_KEY, null);
+    }
+    // スケジュールをホーム画面で使う形式に変換
+    function getScheduleForDisplay() {
+      const items = getScheduleItems();
+      if (!items) return SCHEDULE_DEFAULT; // 未設定時はデフォルト値
+      // dow別にグループ化
+      const result = {};
+      items.forEach(item => {
+        if (!result[item.dow]) result[item.dow] = [];
+        result[item.dow].push({ time: item.time, svc: item.svc });
+      });
+      return result;
+    }
+
+    /* ─── ストレージ ─────────────────────────────── */
+    function getRecords() {
+      try {
+        const raw = localStorage.getItem(STORE_KEY);
+        if (!raw) return [];
+        const all = JSON.parse(raw);
+        const cutoff = Date.now() - SIX_MONTHS;
+        return all.filter(r => r.savedAt >= cutoff);
+      } catch (e) { return []; }
+    }
+
+    function saveRecords(arr) {
+      try { localStorage.setItem(STORE_KEY, JSON.stringify(arr)); }
+      catch (e) { announce('保存に失敗しました。ストレージの空き容量を確認してください。'); }
+    }
+
+    /* ─── aria-live アナウンス ──────────────────── */
+    function announce(msg) {
+      const el = document.getElementById('live-region');
+      el.textContent = '';
+      requestAnimationFrame(() => { el.textContent = msg; });
+    }
+
+    /* ─── ページ切り替え ─────────────────────────── */
+    function showPage(name) {
+      ['home', 'form', 'log', 'self', 'settings'].forEach(p => {
+        const page = document.getElementById('page-' + p);
+        const tab  = document.getElementById('tab-' + p);
+        if (page) page.classList.toggle('active', p === name);
+        if (tab)  tab.setAttribute('aria-selected', p === name ? 'true' : 'false');
+      });
+      if (name === 'home')     renderHome();
+      if (name === 'log')      renderLog();
+      if (name === 'settings') renderSettings();
+      /* VoiceOver向け：新しいページの最初のフォーカス可能要素へ移動 */
+      const pg = document.getElementById('page-' + name);
+      if (pg) {
+        const firstFocusable = pg.querySelector('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])');
+        if (firstFocusable) setTimeout(() => firstFocusable.focus(), 80);
+      }
+    }
+
+    /* ─── バッジHTML ─────────────────────────────── */
+    // svctype は配列または文字列（後方互換）
+    function normalizeSvc(svctype) {
+      if (!svctype) return [];
+      return Array.isArray(svctype) ? svctype : [svctype];
+    }
+
+    // svcTimes（サービスごとの実施時間）を表示用文字列に変換
+    // 例: '家事援助 16:00～17:00／入浴介助 17:00～18:00'
+    function formatSvcTimes(svcTimes) {
+      if (!svcTimes) return '';
+      return Object.entries(svcTimes)
+        .filter(([, t]) => t && (t.start || t.end))
+        .map(([svc, t]) => svc + ' ' + (t.start || '?') + '～' + (t.end || '?'))
+        .join('／');
+    }
+
+    function svcBadge(svctype) {
+      const svcs = normalizeSvc(svctype);
+      if (svcs.length === 0) return '<span class="badge badge-helper">種別不明</span>';
+      return svcs.map(svc => {
+        let cls;
+        if (MEDICAL_SVC.has(svc))         cls = 'badge-medical';
+        else if (svc === '就労支援特別事業' || svc === '移動支援' || svc === '活動随行') cls = 'badge-work';
+        else if (svc === 'モニタリング')  cls = 'badge-common';
+        else                               cls = 'badge-helper';
+        return `<span class="badge ${cls}" style="margin-right:2px">${escHtml(svc)}</span>`;
+      }).join('');
+    }
+
+    /* ─── ホーム画面描画 ─────────────────────────── */
+    function renderHome() {
+      const records = getRecords();
+
+      /* ── ピン留めされた本人・家族申告を表示（最大3件・新しい順） ── */
+      const pinned = records
+        .filter(r => r.is_self_report && r.pinned)
+        .sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0))
+        .slice(0, 3);
+      const pinnedSec  = document.getElementById('sec-pinned');
+      const pinnedList = document.getElementById('pinned-list');
+      if (pinned.length > 0) {
+        pinnedSec.style.display = '';
+        pinnedList.innerHTML = pinned.map(r => {
+          const subj = r.sf_subject || r.subject || '旦';
+          return `<div role="listitem" style="border-top:1px solid var(--border);padding:10px 0 4px">` +
+            `<div class="prev-meta" style="color:#7a4f00">${escHtml(r.date)}　${escHtml(subj)}</div>` +
+            (r.sf_okuri ? `<div class="prev-body">${escHtml(r.sf_okuri)}</div>` : '') +
+            `</div>`;
+        }).join('');
+      } else {
+        pinnedSec.style.display = 'none';
+      }
+
+      /* 対象者ごとに最新記録を取得（本人申告を除く） */
+      function lastOf(subj) {
+        const filtered = records.filter(r => !r.is_self_report && (r.subject || '旦') === subj);
+        return filtered.length > 0 ? filtered[filtered.length - 1] : null;
+      }
+
+      function fillOkuri(elId, prev) {
+        const el = document.getElementById(elId);
+        // 申し送り本文 ＋ 旧データの「未実施ケアと理由」があれば統合表示
+        const okuriText = prev ? (prev.okuri || '').trim() : '';
+        const undoneText = prev ? (prev.undone || '').trim() : '';
+        const combined = [okuriText, undoneText ? '【未実施】' + undoneText : '']
+                           .filter(Boolean).join('\n\n');
+        if (prev && combined) {
+          el.className = 'prev-box';
+          el.innerHTML =
+            `<div class="prev-meta">${escHtml(prev.date)}　${svcBadge(prev.svctype)}</div>` +
+            `<div class="prev-body">${escHtml(combined)}</div>`;
+        } else {
+          el.className = 'alert-none';
+          el.textContent = '申し送り事項の記録がありません';
+        }
+      }
+
+      fillOkuri('prev-okuri-dan',   lastOf('旦'));
+      fillOkuri('prev-okuri-sanae', lastOf('早南江'));
+
+      /* 今日のスケジュール */
+      const dow = new Date().getDay();
+      const sc  = getScheduleForDisplay()[dow] || [];
+      const schedEl = document.getElementById('today-sched');
+      if (sc.length === 0) {
+        schedEl.innerHTML =
+          '<p style="font-size:0.9375rem;color:var(--txt-sub)">本日の定例訪問はありません</p>';
+      } else {
+        schedEl.innerHTML = sc.map(item =>
+          `<div class="sched-row">` +
+          `<span class="sched-time">${item.time}</span>` +
+          `${svcBadge(item.svc)}` +
+          `</div>`
+        ).join('');
+      }
+    }
+
+    /* ─── 過去ログ描画 ───────────────────────────── */
+    function renderLog() {
+      const recordKind = document.getElementById('filter-record').value; // 'all' | 'self' | 'staff'
+      const type    = document.getElementById('filter-type').value;
+      const sort    = document.getElementById('filter-sort').value;
+      const subject = document.getElementById('filter-subject').value;
+      const period  = document.getElementById('filter-period').value; // 'all' | '7' | '14' | '30' | '90'
+
+      let records = getRecords();
+
+      // 記録種別フィルタ（最初に適用）
+      if (recordKind === 'self')  records = records.filter(r => !!r.is_self_report);
+      if (recordKind === 'staff') records = records.filter(r => !r.is_self_report);
+
+      // サービス種別フィルタ（援助職記録のみ有効。本人申告はサービス種別を持たない）
+      if (type && recordKind !== 'self') records = records.filter(r => normalizeSvc(r.svctype).includes(type));
+      if (subject) records = records.filter(r => (r.sf_subject || r.subject || '旦') === subject);
+
+      // 期間フィルタ：訪問日(r.date)を基準に「本日から○日以内」で絞り込む
+      if (period !== 'all') {
+        const days  = parseInt(period, 10);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const cutoff = new Date(today);
+        cutoff.setDate(cutoff.getDate() - days);
+        records = records.filter(r => {
+          if (!r.date) return false;
+          const d = new Date(r.date + 'T00:00:00');
+          return d >= cutoff && d <= today;
+        });
+      }
+
+      records.sort((a, b) => {
+        const da = a.savedAt || 0;
+        const db = b.savedAt || 0;
+        return sort === 'new' ? db - da : da - db;
+      });
+
+      const el = document.getElementById('log-list');
+      if (records.length === 0) {
+        const periodLabel = {
+          all: '', '7': '直近1週間以内に', '14': '直近2週間以内に',
+          '30': '直近1ヶ月以内に', '90': '直近3ヶ月以内に'
+        }[period] || '';
+        el.innerHTML =
+          '<p style="font-size:0.9375rem;color:var(--txt-sub);padding:8px 0">' +
+          periodLabel + '該当する記録がありません</p>';
+        return;
+      }
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      el.innerHTML = records.map((r, i) => {
+        const timeStr = [r.start, r.end].filter(Boolean).join('～');
+        const isSelf  = !!r.is_self_report;
+        const selfSubj = isSelf ? (r.sf_subject || r.subject || '旦') : null;
+
+        // V2ロール制御：ヘルパーは当日分の記録のみ編集可、削除ボタンは常に非表示
+        const canEdit   = userRole === 'owner' || r.date === todayStr;
+        const canDelete = userRole === 'owner';
+
+        return `<div class="log-item" role="listitem"` +
+          (isSelf ? ' style="border-color:#f0a830;border-width:2px"' : '') + `>` +
+          `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">` +
+          `<span class="log-meta">${escHtml(r.date)}${timeStr ? '　' + escHtml(timeStr) : ''}</span>` +
+          (isSelf
+            ? `<span class="badge badge-self">📌本人・家族申告${r.pinned ? '（ピン留め中）' : ''}</span>`
+            : svcBadge(r.svctype)) +
+          `</div>` +
+          (isSelf
+            ? `<div class="log-staff">${escHtml(selfSubj)}からの申告</div>` +
+              (r.sf_okuri ? `<div class="log-snippet">${escHtml(r.sf_okuri)}</div>` : '')
+            : `<div class="log-staff">${escHtml(r.staff || r.office || '（担当者不明）')}` +
+              `　<span style="font-size:0.8125rem;color:var(--txt-sub)">${escHtml(r.subject || '旦')}</span></div>` +
+              (r.okuri  ? `<div class="log-snippet">${escHtml(r.okuri)}</div>` : '') +
+              (r.undone ? `<div class="log-snippet" style="color:var(--danger)">未実施：${escHtml(r.undone)}</div>` : '')) +
+          `<div style="display:flex;gap:8px;margin-top:4px">` +
+          `<button class="btn-secondary" style="font-size:0.875rem;padding:7px 12px"` +
+          ` onclick='${isSelf ? `viewSelfDetail("${escAttr(r.id)}")` : `viewDetail("${escAttr(r.id)}")`}'` +
+          ` aria-label="${escHtml(r.date)}の記録を詳細表示">詳細</button>` +
+          (canEdit
+            ? `<button class="btn-secondary" style="font-size:0.875rem;padding:7px 12px"` +
+              ` onclick='${isSelf ? `editSelfRecord("${escAttr(r.id)}")` : `editRecord("${escAttr(r.id)}")`}'` +
+              ` aria-label="${escHtml(r.date)}の記録を編集">編集</button>`
+            : '') +
+          (canDelete
+            ? `<button class="btn-danger" style="font-size:0.875rem;padding:7px 12px"` +
+              ` onclick='deleteRecord("${escAttr(r.id)}")'` +
+              ` aria-label="${escHtml(r.date)}の記録を削除">削除</button>`
+            : '') +
+          `</div></div>`;
+      }).join('');
+    }
+
+    // 記録種別フィルタ切り替え時：サービス種別フィルタのdisabled制御
+    function onRecordFilterChange() {
+      const kind   = document.getElementById('filter-record').value;
+      const typeSel = document.getElementById('filter-type');
+      const isSelf = kind === 'self';
+      typeSel.disabled = isSelf;
+      typeSel.style.opacity = isSelf ? '0.4' : '';
+      if (isSelf) typeSel.value = '';  // 本人申告選択時はサービス種別をリセット
+      announce(kind === 'self' ? '本人・家族の申告記録のみを表示します。サービス種別フィルタは無効です。'
+             : kind === 'staff' ? '援助職の記録のみを表示します。'
+             : 'すべての記録を表示します。');
+      renderLog();
+    }
+
+    /* ─── 本人申告の詳細モーダル ───────────────────── */
+    function viewSelfDetail(id) {
+      const r = getRecords().find(x => x.id === id);
+      if (!r) return;
+      currentPrintRecord = id;
+      const subj = r.sf_subject || r.subject || '旦';
+      const isSanae = subj === '早南江';
+      const timeStr = [r.start, r.end].filter(Boolean).join('～');
+      const bpStr = (r.sf_bph && r.sf_bpl) ? r.sf_bph + '/' + r.sf_bpl + ' mmHg' : '';
+
+      const rows = [
+        ['日付',           r.date],
+        ['申告者',         subj],
+        ['記録時刻',       timeStr],
+        ['ピン留め',       r.pinned ? 'ホーム画面にピン留め中' : ''],
+        ...(!isSanae ? [
+          ['体調全般',     r.sf_condition],
+          ['気分',         r.sf_mood],
+          ['食事・水分',   r.sf_food],
+          ['見えにくさ',   r.sf_vision],
+          ['視覚困りごと', r.sf_vision_note],
+        ] : [
+          ['体調全般（早南江）',    r.sf_s_condition],
+          ['動悸・胸部症状',        r.sf_cardiac ? r.sf_cardiac + (r.sf_cardiac_note ? '：' + r.sf_cardiac_note : '') : ''],
+          ['腰痛・股関節痛',        r.sf_joint   ? r.sf_joint   + (r.sf_joint_note   ? '：' + r.sf_joint_note   : '') : ''],
+          ['食事・水分（早南江）',  r.sf_s_food],
+        ]),
+        ['体温（参考）',    r.sf_temp  ? r.sf_temp  + ' ℃'    : ''],
+        ['血圧（参考）',    bpStr],
+        ['脈拍（参考）',    r.sf_pulse ? r.sf_pulse + ' 回/分' : ''],
+        ['SpO₂（参考）',   r.sf_spo2  ? r.sf_spo2  + ' %'    : ''],
+        ['希望・申し送り', r.sf_okuri],
+      ].filter(([, v]) => v);
+
+      document.getElementById('modal-content').innerHTML =
+        `<p style="margin-bottom:10px">` +
+        `<span class="badge badge-self" style="margin-right:6px">📌本人・家族申告</span>` +
+        `${escHtml(r.date)}　${escHtml(subj)}</p>` +
+        `<table class="detail-table" aria-label="本人申告の詳細">` +
+        rows.map(([k, v]) =>
+          `<tr><td class="dt-key">${escHtml(k)}</td><td class="dt-val">${escHtml(v)}</td></tr>`
+        ).join('') +
+        `</table>`;
+
+      const overlay = document.getElementById('modal-overlay');
+      overlay.setAttribute('aria-label', '本人・家族申告の詳細');
+      overlay.classList.add('open');
+      setTimeout(() => overlay.querySelector('button').focus(), 80);
+    }
+
+    /* ─── 詳細モーダル ───────────────────────────── */
+    function viewDetail(id) {
+      const r = getRecords().find(x => x.id === id);
+      if (!r) return;
+      currentPrintRecord = id;  // 印刷対象として記憶
+
+      const rows = [
+        ['日付',         r.date],
+        ['対象者',       r.subject || '旦'],
+        ['開始',         r.start],
+        ['終了',         r.end],
+        ['事業所',       r.office],
+        ['担当者',       r.staff],
+        ['サービス種別', normalizeSvc(r.svctype).join('・')],
+        ['サービス別実施時間', formatSvcTimes(r.svcTimes)],
+        ['体調全般',     r.condition],
+        ['気分・精神状態', r.mood],
+        ['食事・水分摂取', r.food],
+        ['疼痛・痺れ',   r.pain],
+        ['疼痛内容',     r.pain_note],
+        ['転倒・ヒヤリ', r.fall],
+        ['転倒内容',     r.fall_note],
+        ['見えにくさ',   r.vision],
+        ['視覚困りごと', r.vision_note],
+        ['体温',         r.temp ? r.temp + ' ℃' : ''],
+        ['血圧',         (r.bph && r.bpl) ? r.bph + '/' + r.bpl + ' mmHg' : ''],
+        ['脈拍',         r.pulse ? r.pulse + ' 回/分' : ''],
+        ['酸素飽和度',   r.spo2  ? r.spo2  + ' %'    : ''],
+        /* 眼科診療記録（眼科訪問診療時のみ意味を持つ） */
+        ['視力（右眼）', r.vacuity_r_low || r.vacuity_r],
+        ['視力（左眼）', r.vacuity_l_low || r.vacuity_l],
+        ['眼圧',         (() => {
+          const rTxt = r.iop_r_na ? '測定不能' : (r.iop_r ? r.iop_r + ' mmHg' : '');
+          const lTxt = r.iop_l_na ? '測定不能' : (r.iop_l ? r.iop_l + ' mmHg' : '');
+          if (!rTxt && !lTxt) return '';
+          return '右 ' + (rTxt || '?') + '／左 ' + (lTxt || '?');
+        })()],
+        ['眼底所見',     r.fundus],
+        ['自覚症状（眼科）', r.eye_subjective],
+        ['他覚症状（眼科）', r.eye_objective],
+        ['処方変更（眼科）', r.eye_rx],
+        ['母親の体調',   r.mom],
+        ['母親特記',     r.mom_note],
+        /* 早南江専用 */
+        ['体調（早南江）',          r.s_condition],
+        ['気分（早南江）',          r.s_mood],
+        ['食事（早南江）',          r.s_food],
+        ['動悸・胸部症状',          r.s_cardiac ? r.s_cardiac + (r.cardiac_note ? '：' + r.cardiac_note : '') : ''],
+        ['腰痛・股関節痛（右）',    r.s_pain_joint ? r.s_pain_joint + (r.joint_note ? '：' + r.joint_note : '') : ''],
+        ['疼痛・痺れ（早南江）',    r.s_pain ? r.s_pain + (r.spain_note ? '：' + r.spain_note : '') : ''],
+        ['転倒・ヒヤリ（早南江）',  r.s_fall ? r.s_fall + (r.sfall_note ? '：' + r.sfall_note : '') : ''],
+        ['実施サービス', (r.done || []).join('、')],
+        ['案件名・活動内容', r.katsudo_name],
+        ['費用負担元', r.katsudo_payer === 'その他' && r.katsudo_payer_other
+                       ? 'その他：' + r.katsudo_payer_other : r.katsudo_payer],
+        ['処方薬変更',   r.rx],
+        ['変更内容',     r.rx_note],
+        ['申し送り事項', [r.okuri, r.undone ? '【旧:未実施】' + r.undone : '']
+                          .filter(Boolean).join('\n\n')],
+      ].filter(([, v]) => v);
+
+      document.getElementById('modal-content').innerHTML =
+        `<p style="margin-bottom:10px">${escHtml(r.date)}　${svcBadge(r.svctype)}</p>` +
+        `<table class="detail-table" aria-label="記録の詳細">` +
+        rows.map(([k, v]) =>
+          `<tr><td class="dt-key">${escHtml(k)}</td>` +
+          `<td class="dt-val">${escHtml(v)}</td></tr>`
+        ).join('') +
+        `</table>`;
+
+      const overlay = document.getElementById('modal-overlay');
+      overlay.classList.add('open');
+      /* フォーカスをモーダル内の閉じるボタンへ */
+      setTimeout(() => {
+        overlay.querySelector('button').focus();
+      }, 80);
+    }
+
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.remove('open');
+      /* フォーカスを過去ログの先頭へ戻す */
+      const firstItem = document.querySelector('#log-list button');
+      if (firstItem) firstItem.focus();
+    }
+
+    /* ─── 印刷・PDF出力 ──────────────────────────── */
+    // サービス種別ごとに印刷するセクション（SECTION_RULESと同一定義）
+    const PRINT_RULES = {
+      vital:   ['訪問看護', '訪問診療', '訪問リハビリ'],
+      jisshi:  ['家事援助', '入浴介助', '訪問看護', '訪問鍼灸', '同行援護', '移動支援',
+                '訪問診療', '訪問服薬指導', '訪問リハビリ', '通院介助', '就労支援特別事業', '活動随行', 'その他'],
+      haha:    ['家事援助', '入浴介助', '訪問看護', '訪問鍼灸',
+                '訪問診療', '訪問服薬指導', '訪問リハビリ', 'その他'],
+      iryo:    ['訪問看護', '訪問鍼灸', '訪問診療', '訪問服薬指導'],
+      eye:     ['眼科訪問診療'],
+    };
+
+    // 現在モーダルに表示中の記録IDを保持
+    let currentPrintRecord = null;
+
+    function row(key, val) {
+      if (!val) return '';
+      return '<tr><td class="p-key">' + escHtml(key) + '</td>' +
+             '<td class="p-val">' + escHtml(val) + '</td></tr>';
+    }
+
+    function rowFull(val) {
+      if (!val) return '';
+      return '<tr><td class="p-val p-full" colspan="2">' + escHtml(val) + '</td></tr>';
+    }
+
+    function secBar(label, cls) {
+      return '<div class="p-sec-bar ' + cls + '">' + escHtml(label) + '</div>';
+    }
+
+    function buildPrintArea(r) {
+      const svcs    = normalizeSvc(r.svctype);            // 配列
+      const svc     = svcs.join('・');                     // 表示用文字列
+      const hasAny  = (list) => list.some(s => svcs.includes(s)); // 論理和チェック
+      const showVital  = hasAny(PRINT_RULES.vital)  || svcs.length === 0;
+      const showHaha   = hasAny(PRINT_RULES.haha)   || svcs.length === 0;
+      const showIryo   = hasAny(PRINT_RULES.iryo)   || svcs.length === 0;
+      const showJisshi = hasAny(PRINT_RULES.jisshi) || svcs.length === 0;
+      const showEye    = hasAny(PRINT_RULES.eye); // 眼科訪問診療を選んだ時のみ表示（svcs.length===0では出さない）
+
+      // 時刻文字列
+      const timeStr = [r.start, r.end].filter(Boolean).join(' ～ ');
+      // 実施サービス
+      const doneStr = (r.done || []).join('　');
+      // バッジ用（複数種別を考慮）
+      const svcCls = svcs.some(s => MEDICAL_SVC.has(s)) ? 'p-sec-medical'
+                   : svc === '就労支援特別事業' ? 'p-sec-work'
+                   : 'p-sec-helper';
+
+      const isSanae = (r.subject || '旦') === '早南江';
+      let html = '<h1>引き継ぎ連絡票　対象：' + escHtml(r.subject || '旦') + '</h1>';
+
+      /* ── 基本情報（共通） ── */
+      html += '<div class="p-section">' +
+        secBar('基本情報', 'p-sec-common') +
+        '<table class="p-table">' +
+        '<tr>' +
+          '<td class="p-key">日付・曜日</td>' +
+          '<td class="p-val">' + escHtml(r.date) + '</td>' +
+          '<td class="p-key">訪問時間</td>' +
+          '<td class="p-val">' + escHtml(timeStr) + '</td>' +
+        '</tr>' +
+        '<tr>' +
+          '<td class="p-key">事業所名</td>' +
+          '<td class="p-val">' + escHtml(r.office || '') + '</td>' +
+          '<td class="p-key">担当者氏名</td>' +
+          '<td class="p-val">' + escHtml(r.staff || '') + '</td>' +
+        '</tr>' +
+        '<tr>' +
+          '<td class="p-key">サービス種別</td>' +
+          '<td class="p-val" colspan="3">' + escHtml(svc) + '</td>' +
+        '</tr>' +
+        (formatSvcTimes(r.svcTimes) ? (
+        '<tr>' +
+          '<td class="p-key">サービス別\n実施時間</td>' +
+          '<td class="p-val" colspan="3">' + escHtml(formatSvcTimes(r.svcTimes)) + '</td>' +
+        '</tr>'
+        ) : '') +
+        '</table></div>';
+
+      /* ── 本人の状態（対象者で切り替え） ── */
+      if (!isSanae) {
+        const visionStr = [r.vision, r.vision_note].filter(Boolean).join('　');
+        const painStr   = r.pain === 'あり' && r.pain_note ? 'あり：' + r.pain_note : (r.pain || '');
+        const fallStr   = r.fall === 'あり' && r.fall_note ? 'あり：' + r.fall_note : (r.fall || '');
+        html += '<div class="p-section">' +
+          secBar('本人の状態（旦）', 'p-sec-helper') +
+          '<table class="p-table">' +
+          row('体調全般',     r.condition) +
+          row('気分・精神状態', r.mood) +
+          row('食事・水分摂取', r.food) +
+          row('疼痛・痺れ等',  painStr) +
+          row('転倒・ヒヤリ',  fallStr) +
+          row('見えにくさ・視覚的困りごと', visionStr) +
+          '</table></div>';
+      } else {
+        const cardiacStr   = r.s_cardiac === 'あり' && r.cardiac_note ? 'あり：' + r.cardiac_note : (r.s_cardiac || '');
+        const jointStr     = r.s_pain_joint ? r.s_pain_joint + (r.joint_note ? '：' + r.joint_note : '') : '';
+        const spainStr     = r.s_pain === 'あり' && r.spain_note ? 'あり：' + r.spain_note : (r.s_pain || '');
+        const sfallStr     = r.s_fall === 'あり' && r.sfall_note ? 'あり：' + r.sfall_note : (r.s_fall || '');
+        html += '<div class="p-section">' +
+          secBar('本人の状態（早南江）', 'p-sec-helper') +
+          '<table class="p-table">' +
+          row('体調全般',             r.s_condition) +
+          row('気分・精神状態',       r.s_mood) +
+          row('食事・水分摂取',       r.s_food) +
+          row('動悸・胸部症状',       cardiacStr) +
+          row('腰痛・股関節痛（右）', jointStr) +
+          row('疼痛・痺れ等',         spainStr) +
+          row('転倒・ヒヤリ',         sfallStr) +
+          '</table></div>';
+      }
+
+      /* ── バイタル（医療職記入）── 非表示なら出力しない */
+      if (showVital) {
+        const bpStr = (r.bph && r.bpl) ? r.bph + '/' + r.bpl + ' mmHg' : '';
+        html += '<div class="p-section">' +
+          secBar('バイタル記録', 'p-sec-medical') +
+          '<table class="p-table"><tr class="p-vital-row">' +
+          '<td class="p-key">体温</td><td class="p-val">' + escHtml(r.temp ? r.temp + ' ℃' : '') + '</td>' +
+          '<td class="p-key">血圧</td><td class="p-val">' + escHtml(bpStr) + '</td>' +
+          '<td class="p-key">脈拍</td><td class="p-val">' + escHtml(r.pulse ? r.pulse + ' 回/分' : '') + '</td>' +
+          '<td class="p-key">SpO₂</td><td class="p-val">' + escHtml(r.spo2 ? r.spo2 + ' %' : '') + '</td>' +
+          '</tr></table></div>';
+      }
+
+      /* ── 眼科診療記録（眼科訪問診療時のみ） ── */
+      if (showEye) {
+        const vacR = r.vacuity_r_low ? r.vacuity_r_low : (r.vacuity_r || '');
+        const vacL = r.vacuity_l_low ? r.vacuity_l_low : (r.vacuity_l || '');
+        const iopR = r.iop_r_na ? '測定不能' : (r.iop_r ? r.iop_r + ' mmHg' : '');
+        const iopL = r.iop_l_na ? '測定不能' : (r.iop_l ? r.iop_l + ' mmHg' : '');
+        const iopStr = (iopR || iopL)
+          ? '右 ' + (iopR || '?') + '／左 ' + (iopL || '?')
+          : '';
+        html += '<div class="p-section">' +
+          secBar('眼科診療記録', 'p-sec-medical') +
+          '<table class="p-table">' +
+          row('視力（右眼）', vacR) +
+          row('視力（左眼）', vacL) +
+          row('眼圧',         iopStr) +
+          row('眼底所見',     r.fundus) +
+          row('自覚症状',     r.eye_subjective) +
+          row('他覚症状',     r.eye_objective) +
+          row('処方変更',     r.eye_rx) +
+          '</table></div>';
+      }
+
+      /* ── 母親の状態（ヘルパー記入）── 非表示なら出力しない */
+      if (showHaha && !isSanae) {
+        const momStr = [r.mom, r.mom_note].filter(Boolean).join('　');
+        html += '<div class="p-section">' +
+          secBar('母親の状態', 'p-sec-helper') +
+          '<table class="p-table">' +
+          row('体調', momStr) +
+          '</table></div>';
+      }
+
+      /* ── 実施内容（モニタリング時は非表示） ── */
+      if (showJisshi) {
+        const payerStr = r.katsudo_payer === 'その他' && r.katsudo_payer_other
+          ? 'その他：' + r.katsudo_payer_other : (r.katsudo_payer || '');
+        html += '<div class="p-section">' +
+          secBar('実施内容', 'p-sec-helper') +
+          '<table class="p-table">' +
+          row('実施サービス', doneStr) +
+          row('案件名・活動内容', r.katsudo_name) +
+          row('費用負担元', payerStr) +
+          '</table></div>';
+      }
+
+      /* ── 医療・投薬（医療職記入）── 非表示なら出力しない */
+      if (showIryo) {
+        const rxStr = r.rx === 'あり' && r.rx_note
+                      ? 'あり：' + r.rx_note : (r.rx || '');
+        html += '<div class="p-section">' +
+          secBar('医療・投薬関連', 'p-sec-medical') +
+          '<table class="p-table">' +
+          row('処方薬の変更', rxStr) +
+          '</table></div>';
+      }
+
+      /* ── 申し送り（共通） ── */
+      // 旧データの「未実施・理由」(r.undone) があれば申し送りに統合表示
+      const okuriCombined = [r.okuri, r.undone ? '【旧:未実施】' + r.undone : '']
+        .filter(Boolean).join('\n\n');
+      html += '<div class="p-section">' +
+        secBar('申し送り・連絡事項（次の援助者へ）', 'p-sec-common') +
+        '<table class="p-table">' +
+        '<tr><td class="p-val p-okuri-val" colspan="2">' +
+        escHtml(okuriCombined) + '</td></tr>' +
+        '</table></div>';
+
+      /* ── 欄外注記 ── */
+      html += '<p class="p-note">※ 緊急度の高い内容には「【要確認】」と記入してください。</p>';
+
+      return html;
+    }
+
+    function printRecord() {
+      if (!currentPrintRecord) return;
+      const r = getRecords().find(x => x.id === currentPrintRecord);
+      if (!r) return;
+
+      // 本人申告か援助者記録かで印刷レイアウトを切り替え
+      document.getElementById('print-area').innerHTML =
+        r.is_self_report ? buildSelfPrintArea(r) : buildPrintArea(r);
+
+      // PDF保存時のファイル名
+      const datePart  = (r.date  || '').replace(/-/g, '');
+      const timePart  = (r.start || '').replace(/:/g, '');
+      const namePart  = r.is_self_report
+        ? (r.sf_subject || r.subject || '本人申告').replace(/[/\\:*?"<>|\s]/g, '_')
+        : (r.staff || r.office || '').replace(/[/\\:*?"<>|\s]/g, '_');
+      const parts    = [datePart, timePart, namePart].filter(Boolean);
+      const fileName = parts.join('_') || (r.is_self_report ? '引き継ぎ連絡票_本人家族申告' : '引き継ぎ連絡票');
+
+      const originalTitle = document.title;
+      document.title = fileName;
+      announce('印刷ダイアログを開きます。PDFで保存するとファイル名は' + fileName + 'になります。');
+
+      setTimeout(() => {
+        window.print();
+        const restore = () => {
+          document.title = originalTitle;
+          window.removeEventListener('afterprint', restore);
+        };
+        window.addEventListener('afterprint', restore);
+        setTimeout(() => { document.title = originalTitle; }, 3000);
+      }, 150);
+    }
+
+    /* ─── 編集モード状態 ──────────────────────────── */
+    let editingId = null;
+    let editingBeforeSnapshot = null; // V2: 編集履歴用に、編集開始時点のクラウド上の内容を保持
+
+    /* ─── 編集 ─────────────────────────────────────── */
+    // V2: 過去ログはクラウドが唯一の情報源のため、編集開始時にクラウドから取得する
+    async function editRecord(id) {
+      await loadCloudLog();
+      const r = cloudLog.find(x => x.id === id && !x.is_self_report);
+      if (!r) {
+        alert('この記録が見つかりませんでした。すでに削除されたか、他の端末で編集された可能性があります。');
+        location.href = 'home.html?tab=log';
+        return;
+      }
+      editingId = id;
+      editingBeforeSnapshot = r;
+      currentPrintRecord = id;
+
+      const form = document.getElementById('record-form');
+      form.reset();
+
+      // 基本情報
+      document.getElementById('f-date').value   = r.date   || '';
+      document.getElementById('f-start').value  = r.start  || '';
+      document.getElementById('f-end').value    = r.end    || '';
+      // 担当者氏名の復元（セレクトにあれば選択、なければカスタム入力）
+      updateStaffSelect(r.staff || '');
+      const staffSel = document.getElementById('f-staff-select');
+      if (staffSel && r.staff) {
+        // セレクトに値があるか確認
+        const opt = staffSel.querySelector(`option[value="${CSS.escape(r.staff)}"]`);
+        if (opt) {
+          staffSel.value = r.staff;
+        } else {
+          staffSel.value = '__other__';
+          const ci = document.getElementById('f-staff-custom');
+          if (ci) ci.value = r.staff;
+        }
+        onStaffSelectChange();
+      }
+      // f-office はupdateSubject()→updateOffice()で選択肢が再構築されるため
+      // updateSubject呼び出し後に値をセットする（後述）
+
+      function setRadio(name, val) {
+        if (!val) return;
+        const el = form.querySelector(`input[name="${name}"][value="${CSS.escape(val)}"]`);
+        if (el) el.checked = true;
+      }
+
+      // 対象者を先に選択してフォーム表示・事業所選択肢を更新
+      setRadio('subject', r.subject || '旦');
+      updateSubject();
+      // updateOffice後に事業所名の選択値を復元
+      const officeEl = document.getElementById('f-office');
+      if (officeEl) officeEl.value = r.office || '';
+
+      // サービス種別を復元（配列または文字列の後方互換）
+      normalizeSvc(r.svctype).forEach(val => {
+        const cb = form.querySelector(`input[name="svctype"][value="${CSS.escape(val)}"]`);
+        if (cb) cb.checked = true;
+      });
+      updateDoneChecks();  // ここで svc-times の入力欄が再構築される
+
+      // サービスごとの実施時間を復元（updateDoneChecks後に行う）
+      if (r.svcTimes) {
+        document.querySelectorAll('#svc-times [data-svc]').forEach(row => {
+          const svc  = row.dataset.svc;
+          const t    = r.svcTimes[svc];
+          if (!t) return;
+          const s = row.querySelector('.svc-time-start');
+          const e = row.querySelector('.svc-time-end');
+          if (s) s.value = t.start || '';
+          if (e) e.value = t.end   || '';
+        });
+      }
+
+      // 旦用フィールド
+      setRadio('condition', r.condition);
+      setRadio('mood',      r.mood);
+      setRadio('food',      r.food);
+      setRadio('pain',      r.pain);
+      if (document.getElementById('f-pain-note'))   document.getElementById('f-pain-note').value   = r.pain_note   || '';
+      setRadio('fall', r.fall);
+      if (document.getElementById('f-fall-note'))   document.getElementById('f-fall-note').value   = r.fall_note   || '';
+      setRadio('vision', r.vision);
+      if (document.getElementById('f-vision-note')) document.getElementById('f-vision-note').value = r.vision_note || '';
+
+      // バイタル
+      document.getElementById('f-temp').value  = r.temp  || '';
+      document.getElementById('f-bph').value   = r.bph   || '';
+      document.getElementById('f-bpl').value   = r.bpl   || '';
+      document.getElementById('f-pulse').value = r.pulse || '';
+      if (document.getElementById('f-spo2')) document.getElementById('f-spo2').value = r.spo2 || '';
+
+      // 眼科診療記録
+      if (document.getElementById('f-vacuity-r'))     document.getElementById('f-vacuity-r').value     = r.vacuity_r     || '';
+      if (document.getElementById('f-vacuity-l'))     document.getElementById('f-vacuity-l').value     = r.vacuity_l     || '';
+      if (document.getElementById('f-vacuity-r-low')) document.getElementById('f-vacuity-r-low').value = r.vacuity_r_low || '';
+      if (document.getElementById('f-vacuity-l-low')) document.getElementById('f-vacuity-l-low').value = r.vacuity_l_low || '';
+      if (document.getElementById('f-iop-r'))         document.getElementById('f-iop-r').value         = r.iop_r         || '';
+      if (document.getElementById('f-iop-l'))         document.getElementById('f-iop-l').value         = r.iop_l         || '';
+      if (document.getElementById('f-iop-r-na')) {
+        document.getElementById('f-iop-r-na').checked = !!r.iop_r_na;
+        toggleIopField('r');
+      }
+      if (document.getElementById('f-iop-l-na')) {
+        document.getElementById('f-iop-l-na').checked = !!r.iop_l_na;
+        toggleIopField('l');
+      }
+      if (document.getElementById('f-fundus'))         document.getElementById('f-fundus').value         = r.fundus         || '';
+      if (document.getElementById('f-eye-subjective')) document.getElementById('f-eye-subjective').value = r.eye_subjective || '';
+      if (document.getElementById('f-eye-objective'))  document.getElementById('f-eye-objective').value  = r.eye_objective  || '';
+      if (document.getElementById('f-eye-rx'))         document.getElementById('f-eye-rx').value         = r.eye_rx         || '';
+
+      // 母親の状態
+      setRadio('mom', r.mom);
+      if (document.getElementById('f-mom-note')) document.getElementById('f-mom-note').value = r.mom_note || '';
+
+      // 実施内容
+      (r.done || []).forEach(val => {
+        const cb = form.querySelector(`input[name="done"][value="${CSS.escape(val)}"]`);
+        if (cb) cb.checked = true;
+      });
+
+      // 活動随行（自費・第三者負担）
+      if (document.getElementById('f-katsudo-name'))  document.getElementById('f-katsudo-name').value  = r.katsudo_name  || '';
+      if (document.getElementById('f-katsudo-payer')) {
+        document.getElementById('f-katsudo-payer').value = r.katsudo_payer || '';
+        toggleKatsudoPayerOther();
+      }
+      if (document.getElementById('f-katsudo-payer-other')) document.getElementById('f-katsudo-payer-other').value = r.katsudo_payer_other || '';
+
+      // 医療・投薬
+      setRadio('rx', r.rx);
+      if (document.getElementById('f-rx-note')) document.getElementById('f-rx-note').value = r.rx_note || '';
+
+      // 申し送り
+      document.getElementById('f-okuri').value = r.okuri || '';
+
+      // 早南江専用フィールド
+      setRadio('s_condition',  r.s_condition);
+      setRadio('s_mood',       r.s_mood);
+      setRadio('s_food',       r.s_food);
+      setRadio('s_cardiac',    r.s_cardiac);
+      if (document.getElementById('f-cardiac-note')) document.getElementById('f-cardiac-note').value = r.cardiac_note || '';
+      setRadio('s_pain_joint', r.s_pain_joint);
+      if (document.getElementById('f-joint-note'))   document.getElementById('f-joint-note').value   = r.joint_note   || '';
+      setRadio('s_pain',       r.s_pain);
+      if (document.getElementById('f-spain-note'))   document.getElementById('f-spain-note').value   = r.spain_note   || '';
+      setRadio('s_fall',       r.s_fall);
+      if (document.getElementById('f-sfall-note'))   document.getElementById('f-sfall-note').value   = r.sfall_note   || '';
+
+      // フォームUI を編集モードに
+      const lbl = document.getElementById('form-mode-label');
+      const svcLabel = normalizeSvc(r.svctype).join('・') || '';
+      if (lbl) lbl.textContent = '記録を編集中（' + r.date + '　' + (r.subject || '旦') + '　' + svcLabel + '）';
+      const btn = document.getElementById('save-btn');
+      if (btn) btn.textContent = '変更を保存する';
+
+      showPage('form');
+      announce('編集モードです。' + r.date + '　' + (r.subject || '旦') + '　' + svcLabel + 'の記録を読み込みました。修正後、変更を保存するボタンを押してください。');
+    }
+
+    /* ─── 削除 ───────────────────────────────────── */
+    function deleteRecord(id) {
+      if (!confirm('この記録を削除しますか？\nこの操作は元に戻せません。')) return;
+      const records = getRecords().filter(r => r.id !== id);
+      saveRecords(records);
+      announce('記録を削除しました');
+      renderLog();
+    }
+
+    /* ─── フォーム保存 ───────────────────────────── */
+    async function saveRecord(e) {
+      e.preventDefault();
+      const form    = document.getElementById('record-form');
+      const dateVal = document.getElementById('f-date').value;
+
+      if (!dateVal) {
+        announce('日付を入力してください');
+        document.getElementById('f-date').focus();
+        return;
+      }
+
+      // サービス種別：複数チェック対応（配列で保存）
+      const svctypeSel = [...form.querySelectorAll('input[name="svctype"]:checked')]
+                           .map(c => c.value);
+      const doneCbs = [...form.querySelectorAll('input[name="done"]:checked')]
+                        .map(c => c.value);
+
+      // サービスごとの実施時間（任意）：開始・終了のいずれかが入っている場合のみ保存
+      const svcTimes = {};
+      document.querySelectorAll('#svc-times [data-svc]').forEach(row => {
+        const svc = row.dataset.svc;
+        const s = row.querySelector('.svc-time-start')?.value || '';
+        const e = row.querySelector('.svc-time-end')?.value || '';
+        if (s || e) svcTimes[svc] = { start: s, end: e };
+      });
+
+      const rec = {
+        id:        Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6),
+        savedAt:   Date.now(),
+        date:      dateVal,
+        start:     document.getElementById('f-start').value,
+        end:       document.getElementById('f-end').value,
+        office:    document.getElementById('f-office').value.trim(),
+        staff:     getStaffValue(),
+        subject:   valOf(form, 'subject') || '旦',
+        svctype:   svctypeSel,  // 配列で保存（後方互換：旧データは文字列のまま）
+        svcTimes:  svcTimes,    // { サービス名: {start, end} }（任意）
+        condition: valOf(form, 'condition'),
+        mood:      valOf(form, 'mood'),
+        food:      valOf(form, 'food'),
+        pain:      valOf(form, 'pain'),
+        pain_note: document.getElementById('f-pain-note').value.trim(),
+        fall:      valOf(form, 'fall'),
+        fall_note: document.getElementById('f-fall-note').value.trim(),
+        vision:    valOf(form, 'vision'),
+        vision_note: document.getElementById('f-vision-note').value.trim(),
+        /* 早南江専用フィールド */
+        s_condition:  valOf(form, 's_condition'),
+        s_mood:       valOf(form, 's_mood'),
+        s_food:       valOf(form, 's_food'),
+        s_cardiac:    valOf(form, 's_cardiac'),
+        cardiac_note: document.getElementById('f-cardiac-note') ? document.getElementById('f-cardiac-note').value.trim() : '',
+        s_pain_joint: valOf(form, 's_pain_joint'),
+        joint_note:   document.getElementById('f-joint-note') ? document.getElementById('f-joint-note').value.trim() : '',
+        s_pain:       valOf(form, 's_pain'),
+        spain_note:   document.getElementById('f-spain-note') ? document.getElementById('f-spain-note').value.trim() : '',
+        s_fall:       valOf(form, 's_fall'),
+        sfall_note:   document.getElementById('f-sfall-note') ? document.getElementById('f-sfall-note').value.trim() : '',
+        temp:      document.getElementById('f-temp').value.trim(),
+        bph:       document.getElementById('f-bph').value.trim(),
+        bpl:       document.getElementById('f-bpl').value.trim(),
+        pulse:     document.getElementById('f-pulse').value.trim(),
+        spo2:      document.getElementById('f-spo2') ? document.getElementById('f-spo2').value.trim() : '',
+        // 眼科診療記録（眼科訪問診療時のみ意味を持つ。空欄可）
+        vacuity_r:     document.getElementById('f-vacuity-r')     ? document.getElementById('f-vacuity-r').value.trim()     : '',
+        vacuity_l:     document.getElementById('f-vacuity-l')     ? document.getElementById('f-vacuity-l').value.trim()     : '',
+        vacuity_r_low: document.getElementById('f-vacuity-r-low') ? document.getElementById('f-vacuity-r-low').value       : '',
+        vacuity_l_low: document.getElementById('f-vacuity-l-low') ? document.getElementById('f-vacuity-l-low').value       : '',
+        iop_r:         document.getElementById('f-iop-r')         ? document.getElementById('f-iop-r').value.trim()         : '',
+        iop_l:         document.getElementById('f-iop-l')         ? document.getElementById('f-iop-l').value.trim()         : '',
+        iop_r_na:      document.getElementById('f-iop-r-na')      ? document.getElementById('f-iop-r-na').checked            : false,
+        iop_l_na:      document.getElementById('f-iop-l-na')      ? document.getElementById('f-iop-l-na').checked            : false,
+        fundus:          document.getElementById('f-fundus')          ? document.getElementById('f-fundus').value.trim()          : '',
+        eye_subjective:  document.getElementById('f-eye-subjective')  ? document.getElementById('f-eye-subjective').value.trim()  : '',
+        eye_objective:   document.getElementById('f-eye-objective')   ? document.getElementById('f-eye-objective').value.trim()   : '',
+        eye_rx:          document.getElementById('f-eye-rx')          ? document.getElementById('f-eye-rx').value.trim()          : '',
+        mom:       valOf(form, 'mom'),
+        mom_note:  document.getElementById('f-mom-note').value.trim(),
+        done:      doneCbs,
+        katsudo_name:  document.getElementById('f-katsudo-name')  ? document.getElementById('f-katsudo-name').value.trim()  : '',
+        katsudo_payer: document.getElementById('f-katsudo-payer') ? document.getElementById('f-katsudo-payer').value        : '',
+        katsudo_payer_other: document.getElementById('f-katsudo-payer-other') ? document.getElementById('f-katsudo-payer-other').value.trim() : '',
+        rx:        valOf(form, 'rx'),
+        rx_note:   document.getElementById('f-rx-note').value.trim(),
+        okuri:     document.getElementById('f-okuri').value.trim(),
+      };
+
+      // V2: 過去ログはクラウドが唯一の情報源のため、端末には記録を永続保存しない
+      // （送信失敗時の一時保存は submitToCloud() 内の未送信キューが担う）。
+      const wasEditing = !!editingId; // clearForm()がeditingIdをリセットする前に控えておく
+      if (wasEditing && editingBeforeSnapshot) {
+        rec.id      = editingBeforeSnapshot.id;
+        rec.savedAt = editingBeforeSnapshot.savedAt;
+      }
+      if (wasEditing) rec.editedAt = Date.now();
+
+      const submitBtn = document.getElementById('save-btn');
+      if (submitBtn) submitBtn.disabled = true;
+      announce(wasEditing ? '記録を更新しています…' : '記録を保存しています…');
+
+      const payload = {
+        action: wasEditing ? 'edit' : 'submit',
+        role:   userRole,
+        record: rec
+      };
+      if (wasEditing && editingBeforeSnapshot) payload.before = editingBeforeSnapshot;
+
+      const sendResult = await submitToCloud(payload, (wasEditing ? '更新' : '新規') + '記録：' + rec.date);
+
+      if (submitBtn) submitBtn.disabled = false;
+      announce(
+        (wasEditing ? '記録を更新しました。' : '記録を保存しました。') +
+        (sendResult.sent ? '' : sendResult.message) +
+        'ホーム画面に戻ります。'
+      );
+      clearForm();
+      // V2: 内部のpage-home/page-logではなく、必ずhome.htmlへ戻す
+      // （作業終了ボタン・ロール別UI制御はhome.html側にしかないため）
+      location.href = wasEditing ? 'home.html?tab=log' : 'home.html';
+    }
+
+    // submitToCloud() は config.js の共通関数を使う（home.htmlの削除処理とも共用）。
+
+    function valOf(form, name) {
+      const el = form.querySelector(`input[name="${name}"]:checked`);
+      return el ? el.value : '';
+    }
+
+    /* ─── 対象者連動：フォーム切り替え ────────────────── */
+    /* ─── 事業所データ ───────────────────────────── */
+    const OFFICES_DEFAULT = {
+      dan: [
+        { value: '日本ブラインドサッカー協会', label: '日本ブラインドサッカー協会', for: 'dan' },
+        { value: 'ビーフラット',               label: 'ビーフラット',               for: 'dan' },
+        { value: 'まるかケア',                 label: 'まるかケア',                 for: 'dan' },
+        { value: '中央区立福祉センター',       label: '中央区立福祉センター',       for: 'dan' },
+      ],
+      sanae: [
+        { value: '晴海苑', label: '晴海苑', for: 'sanae' },
+      ],
+      both: [
+        { value: '総合介護サービス',                     label: '総合介護サービス',                     for: 'both' },
+        { value: 'ケアリッツ月島',                       label: 'ケアリッツ月島',                       for: 'both' },
+        { value: '訪問介護事業所サクラ',                 label: '訪問介護事業所サクラ',                 for: 'both' },
+        { value: 'ベストリハ訪問看護ステーション銀座',   label: 'ベストリハ訪問看護ステーション銀座',   for: 'both' },
+        { value: 'ベストリハ訪問看護ステーション四谷',   label: 'ベストリハ訪問看護ステーション四谷',   for: 'both' },
+        { value: '大江戸江東クリニック',                 label: '大江戸江東クリニック',                 for: 'both' },
+        { value: 'コトブキ調剤薬局足立店',               label: 'コトブキ調剤薬局足立店',               for: 'both' },
+        { value: '株式会社クラウドケア',                 label: '株式会社クラウドケア',                 for: 'both' },
+      ],
+    };
+
+    function getOfficeItems() {
+      // V2: クラウド（loadCloudSettingsでロード済みのcloudSettings）を優先し、
+      // 未取得・未設定時はローカルキャッシュ→ハードコードの初期値の順にフォールバックする
+      if (cloudSettings.offices) return cloudSettings.offices;
+      const saved = loadSetting(OFFICE_KEY, null);
+      if (saved) return saved;
+      return [
+        ...OFFICES_DEFAULT.dan,
+        ...OFFICES_DEFAULT.sanae,
+        ...OFFICES_DEFAULT.both,
+      ];
+    }
+
+    function getStaffItems() {
+      if (cloudSettings.staff) return cloudSettings.staff;
+      return loadSetting(STAFF_KEY, []);
+    }
+
+    function updateStaffSelect(currentVal) {
+      const sel = document.getElementById('f-staff-select');
+      if (!sel) return;
+      const items = getStaffItems();
+      sel.innerHTML =
+        '<option value="">-- 選択してください --</option>' +
+        items.sort((a, b) => a.localeCompare(b, 'ja'))
+             .map(name =>
+               `<option value="${escHtml(name)}"` +
+               (name === currentVal ? ' selected' : '') +
+               `>${escHtml(name)}</option>`
+             ).join('') +
+        '<option value="__other__">一覧にない（直接入力）</option>';
+      onStaffSelectChange();
+    }
+
+    function onStaffSelectChange() {
+      const sel  = document.getElementById('f-staff-select');
+      const wrap = document.getElementById('f-staff-custom-wrap');
+      if (!sel || !wrap) return;
+      const isOther = sel.value === '__other__';
+      wrap.style.display = isOther ? '' : 'none';
+      const input = document.getElementById('f-staff-custom');
+      if (input) { input.disabled = !isOther; if (!isOther) input.value = ''; }
+    }
+
+    function getStaffValue() {
+      const sel = document.getElementById('f-staff-select');
+      if (!sel) return '';
+      if (sel.value === '__other__' || sel.value === '') {
+        const custom = document.getElementById('f-staff-custom');
+        return custom ? custom.value.trim() : '';
+      }
+      return sel.value;
+    }
+
+    function updateOffice(subj, currentVal) {
+      const isSanae = subj === '早南江';
+      const sel = document.getElementById('f-office');
+      if (!sel) return;
+
+      const all = getOfficeItems();
+      const options = all
+        .filter(o => o.for === 'both' || (isSanae ? o.for === 'sanae' : o.for === 'dan'))
+        .sort((a, b) => a.label.localeCompare(b.label, 'ja'));
+
+      sel.innerHTML =
+        '<option value="">-- 選択してください --</option>' +
+        options.map(o =>
+          `<option value="${escHtml(o.value)}"` +
+          (o.value === currentVal ? ' selected' : '') +
+          `>${escHtml(o.label)}</option>`
+        ).join('') +
+        '<option value="__other__">一覧にない（直接入力）</option>';
+
+      // 事業所が「一覧にない」の場合のカスタム入力欄制御（将来拡張用）
+    }
+
+    function updateSubject() {
+      const form    = document.getElementById('record-form');
+      const subjSel = form.querySelector('input[name="subject"]:checked');
+      const subj    = subjSel ? subjSel.value : '旦';
+      const isSanae = subj === '早南江';
+
+      // 旦用・早南江用の本人状態セクションを切り替え
+      const danSec   = document.getElementById('sec-honnin');
+      const sanaeSec = document.getElementById('sec-honnin-sanae');
+      danSec.style.display   = isSanae ? 'none' : '';
+      sanaeSec.style.display = isSanae ? '' : 'none';
+
+      // 旦用セクション内inputのdisabled制御
+      danSec.querySelectorAll('input,textarea').forEach(el => { el.disabled = isSanae; });
+      sanaeSec.querySelectorAll('input,textarea').forEach(el => { el.disabled = !isSanae; });
+
+      // ※ 母親の状態（sec-haha）はupdateDoneChecks()が
+      //   対象者×サービス種別の2条件で制御するためここでは触らない
+
+      // サービス種別の表示切り替え（旦専用・早南江専用）
+      document.querySelectorAll('.svc-dan-only').forEach(el => {
+        el.style.display = isSanae ? 'none' : '';
+        const inp = el.querySelector('input');
+        if (inp) { inp.disabled = isSanae; if (isSanae && inp.checked) inp.checked = false; }
+      });
+      document.querySelectorAll('.svc-sanae-only').forEach(el => {
+        el.style.display = isSanae ? '' : 'none';
+        const inp = el.querySelector('input');
+        if (inp) { inp.disabled = !isSanae; if (!isSanae && inp.checked) inp.checked = false; }
+      });
+
+      // 対象者切り替え時はすべてのサービス種別チェックをリセット
+      document.querySelectorAll('input[name="svctype"]').forEach(el => {
+        el.checked = false;
+        el.disabled = false;
+      });
+      updateDoneChecks();
+
+      // 事業所選択肢を対象者に合わせて更新（現在の選択値は保持）
+      const currentOffice = document.getElementById('f-office')?.value || '';
+      updateOffice(subj, currentOffice);
+
+      announce(isSanae
+        ? '早南江さんの記録モードに切り替えました。事業所名の選択肢が切り替わりました。'
+        : '旦さんの記録モードに切り替えました。事業所名の選択肢が切り替わりました。');
+    }
+
+    /* ─── サービス種別連動：実施内容チェック項目切り替え ── */
+    const DONE_ITEMS = {
+      // ── 家事援助（デフォルト） ──────────────────────────
+      _default: [
+        '掃除', '洗濯', '調理補助', '買い物', '服薬確認', 'その他'
+      ],
+      '家事援助': [
+        '掃除', '洗濯', '調理補助', '買い物', '服薬確認', 'その他'
+      ],
+      // ── 入浴介助 ────────────────────────────────────────
+      '入浴介助': [
+        '全身浴介助', '部分浴（手浴・足浴）', '清拭', '洗髪', '更衣介助', 'その他'
+      ],
+      // ── 同行援護（水曜定例：眼科・整形外科を隔週） ────────
+      '同行援護': [
+        '外出付き添い・移動介助',
+        '通院同行（眼科）',
+        '通院同行（整形外科）',
+        '情報提供・代読・代筆',
+        '公共交通機関利用介助',
+        '待合室での介助・サポート',
+        '処方箋・薬局対応',
+        'その他'
+      ],
+      // ── 訪問看護 ────────────────────────────────────────
+      '訪問看護': [
+        'バイタル測定', '処置・医療的ケア', '服薬管理・確認',
+        '清拭・部分浴', '相談・保健指導', 'その他'
+      ],
+      // ── 訪問鍼灸 ────────────────────────────────────────
+      '訪問鍼灸': [
+        '鍼治療', '灸治療', '全身調整', 'その他'
+      ],
+      // ── 訪問診療 ────────────────────────────────────────
+      '訪問診療': [
+        '診察・問診', '処方・投薬指示', '処置', '療養指導', 'その他'
+      ],
+      // ── 訪問服薬指導 ────────────────────────────────────
+      '訪問服薬指導': [
+        '服薬状況確認', '薬の説明・指導', '残薬確認', '処方内容確認', 'その他'
+      ],
+      // ── 訪問リハビリ ────────────────────────────────────
+      '訪問リハビリ': [
+        '関節可動域訓練', '筋力訓練', '歩行・移動訓練',
+        'ADL訓練', '姿勢・ポジショニング指導', '家族指導', 'その他'
+      ],
+      // ── 移動支援（地域生活支援事業・旦専用）────────────────
+      '移動支援': [
+        '外出付き添い（移動介助）',
+        '通院同行（眼科）',
+        '通院同行（整形外科）',
+        '買い物同行',
+        '情報提供・代読・代筆',
+        '公共交通機関利用介助',
+        'その他'
+      ],
+      // ── 通院介助（早南江専用） ────────────────────────────────
+      '通院介助': [
+        '通院付き添い・移動介助',
+        '院内での介助・サポート',
+        '処方箋・薬局対応',
+        '検査・処置への同席',
+        'その他'
+      ],
+      // ── 就労支援特別事業（雇用施策連携・重度障害者等就労支援） ─
+      // 根拠：雇用施策との連携による重度障害者等就労支援特別事業
+      // 同行援護とは給付体系・事業所・従業者要件が異なるため別管理
+      'モニタリング': [
+        '利用者本人への聞き取り',
+        '家族への聞き取り',
+        'サービス実施状況の確認',
+        'その他'
+      ],
+      '就労支援特別事業': [
+        '営業付き添い・移動介助',
+        '出張同行（交通機関利用含む）',
+        '打ち合わせ・商談への同席',
+        '情報提供・代読・代筆（就労場面）',
+        'ICT操作補助（就労場面）',
+        'セミナー・講座への同行',
+        'その他（就労関連）'
+      ],
+      // ── 活動随行（自費・第三者負担） ──────────────────────
+      '活動随行': [
+        '外出・移動の付き添い',
+        '資料準備・配布補助',
+        '会場内の移動介助',
+        '発言・質疑応答の補助（代読・代筆等）',
+        'ICT機器操作補助',
+        'その他'
+      ],
+    };
+
+    /* ─── 眼圧「測定不能」チェック連動 ──────────────── */
+    // チェックされたら数値入力欄を非表示・disabled・クリアにする
+    function toggleIopField(side) {
+      const cb    = document.getElementById('f-iop-' + side + '-na');
+      const input = document.getElementById('f-iop-' + side);
+      if (!cb || !input) return;
+      const na = cb.checked;
+      input.style.display = na ? 'none' : '';
+      input.disabled = na;
+      if (na) input.value = '';
+      announce((side === 'r' ? '右眼' : '左眼') + 'の眼圧を' +
+               (na ? '測定不能に設定しました' : '数値入力に戻しました'));
+    }
+
+    /* ─── 活動随行：費用負担元「その他」選択時のテキスト欄トグル ── */
+    function toggleKatsudoPayerOther() {
+      const sel  = document.getElementById('f-katsudo-payer');
+      const wrap = document.getElementById('f-katsudo-payer-other-wrap');
+      if (!sel || !wrap) return;
+      const isOther = sel.value === 'その他';
+      wrap.style.display = isOther ? '' : 'none';
+      const input = document.getElementById('f-katsudo-payer-other');
+      if (input) { input.disabled = !isOther; if (!isOther) input.value = ''; }
+    }
+
+    /* ─── サービスごとの実施時間（任意） ──────────────── */
+    // 既存の入力値を保持したまま、選択中のサービス種別に応じて
+    // 時間入力欄を再構築する
+    function updateSvcTimes(svcSels) {
+      const wrap = document.getElementById('svc-times');
+      if (!wrap) return;
+
+      // 再構築前に現在の入力値を退避
+      const saved = {};
+      wrap.querySelectorAll('[data-svc]').forEach(row => {
+        const svc = row.dataset.svc;
+        const s = row.querySelector('.svc-time-start');
+        const e = row.querySelector('.svc-time-end');
+        saved[svc] = { start: s ? s.value : '', end: e ? e.value : '' };
+      });
+
+      if (svcSels.length === 0) {
+        wrap.innerHTML = '';
+        return;
+      }
+
+      wrap.innerHTML =
+        '<p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:6px">' +
+        '各サービスの実施時間（任意。全体の訪問時間の内訳を記録できます）</p>' +
+        svcSels.map((svc, i) => {
+          const prev = saved[svc] || { start: '', end: '' };
+          const sid = 'svc-time-' + i;
+          return '<div class="row2 field" data-svc="' + escAttr(svc) + '" style="margin-top:6px">' +
+            '<div>' +
+              '<label for="' + sid + '-s">' + escHtml(svc) + '　開始</label>' +
+              '<input type="time" id="' + sid + '-s" class="svc-time-start" value="' + escAttr(prev.start) + '">' +
+            '</div>' +
+            '<div>' +
+              '<label for="' + sid + '-e">' + escHtml(svc) + '　終了</label>' +
+              '<input type="time" id="' + sid + '-e" class="svc-time-end" value="' + escAttr(prev.end) + '">' +
+            '</div>' +
+          '</div>';
+        }).join('');
+    }
+
+    function updateDoneChecks() {
+      const form   = document.getElementById('record-form');
+      // 複数チェックに対応：選択されたすべての種別を取得
+      const svcSels = [...form.querySelectorAll('input[name="svctype"]:checked')]
+                        .map(el => el.value);
+      const svc = svcSels[0] || '';  // セクション制御用（後方互換）
+
+      // 実施内容：複数種別の選択肢を統合（重複除去）
+      const mergedItems = svcSels.length === 0
+        ? DONE_ITEMS['_default']
+        : [...new Set(
+            svcSels.flatMap(s => DONE_ITEMS[s] || DONE_ITEMS['_default'])
+          )];
+      const wrap   = document.getElementById('done-checks');
+
+      // サービスごとの実施時間入力欄を更新
+      updateSvcTimes(svcSels);
+
+      const items = mergedItems;
+      wrap.innerHTML = items.map((label, i) => {
+        const id  = 'sv_' + i;
+        const val = label;
+        return '<div class="check-item">' +
+          '<input type="checkbox" id="' + id + '" name="done" value="' + escHtml(val) + '">' +
+          '<label for="' + id + '">' + escHtml(label) + '</label>' +
+          '</div>';
+      }).join('');
+
+      // 活動随行（自費・第三者負担）選択時のみ案件名・費用負担元を表示
+      const katsudoExtra = document.getElementById('sec-katsudo-extra');
+      if (katsudoExtra) {
+        const showKatsudo = svcSels.includes('活動随行');
+        katsudoExtra.style.display = showKatsudo ? '' : 'none';
+        katsudoExtra.querySelectorAll('input, select, textarea').forEach(inp => {
+          inp.disabled = !showKatsudo;
+        });
+      }
+
+      // ── セクション表示制御 ──────────────────────────────────────
+      // サービス種別ごとに表示するセクションを定義
+      // キー：セクションid  値：表示するサービス種別の配列（空配列＝全種別で表示）
+      // ── サービス種別によるセクション表示制御 ──────────────────
+      // sec-honnin / sec-honnin-sanae / sec-haha は
+      // updateSubject() が対象者ベースで管理するため、ここでは触らない
+      // ただし sec-haha はさらにサービス種別でも制御が必要
+      const form2 = document.getElementById('record-form');
+      const subjSel2 = form2.querySelector('input[name="subject"]:checked');
+      const currentSubj = subjSel2 ? subjSel2.value : '旦';
+      const isSanaeNow  = currentSubj === '早南江';
+
+      // バイタル・実施内容・医療投薬はサービス種別で制御
+      const SVC_RULES = {
+        'sec-vital':   ['訪問看護', '訪問診療', '訪問リハビリ'],
+        // モニタリングのみの場合は実施内容を非表示
+        // 空配列は「全種別で表示」を意味するため、モニタリング除外リストとして明示
+        'sec-jisshi':  ['家事援助', '入浴介助', '訪問看護', '訪問鍼灸', '同行援護', '移動支援',
+                        '訪問診療', '訪問服薬指導', '訪問リハビリ', '通院介助',
+                        '就労支援特別事業', '活動随行', 'その他'],
+        'sec-iryo':    ['訪問看護', '訪問鍼灸', '訪問診療', '訪問服薬指導'],
+        // 眼科訪問診療専用：眼科診療記録セクション
+        'sec-eye':     ['眼科訪問診療'],
+      };
+
+      Object.entries(SVC_RULES).forEach(([secId, svcs]) => {
+        const el = document.getElementById(secId);
+        if (!el) return;
+        // svcs が空配列なら全種別で表示、それ以外は論理和チェック
+        const show = svcSels.length === 0 ||
+                     svcs.length === 0 ||
+                     svcs.some(s => svcSels.includes(s));
+        el.style.display = show ? '' : 'none';
+        el.querySelectorAll('input, select, textarea').forEach(inp => {
+          inp.disabled = !show;
+        });
+      });
+
+      // 母親の状態：旦かつ対象サービスのときのみ表示
+      const hahaSvc = ['家事援助', '入浴介助', '訪問看護', '訪問鍼灸',
+                       '訪問診療', '訪問服薬指導', '訪問リハビリ', 'その他'];
+      const hahaEl = document.getElementById('sec-haha');
+      if (hahaEl) {
+        const showHaha = !isSanaeNow && (svcSels.length === 0 || svcSels.some(s => hahaSvc.includes(s)));
+        hahaEl.style.display = showHaha ? '' : 'none';
+        hahaEl.querySelectorAll('input, select, textarea').forEach(inp => {
+          inp.disabled = !showHaha;
+        });
+      }
+
+      // VoiceOver向けアナウンス
+      // VoiceOver向けアナウンス（複数選択対応）
+      const svcLabel = svcSels.length > 0 ? svcSels.join('、') : '未選択';
+      announce('サービス種別を「' + svcLabel + '」に設定しました。関連する入力欄を更新しました。');
+    }
+
+    /* ─── V2: 「← ホームに戻る」確認モーダル ───────────────────
+     * page-form / page-self 双方の「← ホームに戻る」ボタンから呼ばれる。
+     * 保存してから戻る／保存せずに戻る／キャンセルの3択を提示する。
+     */
+    let exitModalKind = null; // 'form' | 'self'
+
+    function requestExit(kind) {
+      exitModalKind = kind;
+      const modal = document.getElementById('exit-modal');
+      modal.style.display = 'flex';
+      const firstBtn = modal.querySelector('button');
+      if (firstBtn) setTimeout(() => firstBtn.focus(), 50);
+    }
+
+    function closeExitModal() {
+      document.getElementById('exit-modal').style.display = 'none';
+      exitModalKind = null;
+    }
+
+    function exitSaveAndGoHome() {
+      const kind = exitModalKind;
+      closeExitModal();
+      // 通常の保存ボタンをクリックしたのと同じ扱いにする（入力必須チェック等も共通で効く）。
+      // 日付未入力などで保存が中断された場合はページ遷移せずそのまま入力画面に留まる。
+      if (kind === 'form') {
+        const btn = document.getElementById('save-btn');
+        if (btn) btn.click();
+      } else if (kind === 'self') {
+        const btn = document.getElementById('sf-save-btn');
+        if (btn) btn.click();
+      }
+    }
+
+    function exitDiscardAndGoHome() {
+      const kind = exitModalKind;
+      closeExitModal();
+      if (kind === 'form') clearForm();
+      else if (kind === 'self') clearSelfForm();
+      announce('保存せずにホーム画面に戻ります。');
+      location.href = 'home.html';
+    }
+
+    /* ─── フォームクリア ─────────────────────────── */
+    function clearForm() {
+      document.getElementById('record-form').reset();
+      document.getElementById('f-date').value =
+        new Date().toISOString().slice(0, 10);
+      editingId = null;
+      editingBeforeSnapshot = null;
+      const lbl = document.getElementById('form-mode-label');
+      if (lbl) lbl.textContent = '';
+      const btn = document.getElementById('save-btn');
+      if (btn) btn.textContent = '記録を保存する';
+      updateStaffSelect('');  // 担当者セレクトをリセット
+      updateSubject();        // 対象者リセット（旦に戻す）とフォーム表示の初期化
+      updateDoneChecks();     // チェック項目のリセットとセクション表示の初期化を兼ねる
+      announce('フォームをクリアしました。サービス種別を選択すると関係のない入力欄が非表示になります。');
+    }
+
+    /* ─── 音声入力（Web Speech API） ────────────── */
+    let recognition = null;
+
+    function startVoice(targetId, btn) {
+      const SpeechRec =
+        window.SpeechRecognition || window.webkitSpeechRecognition;
+
+      if (!SpeechRec) {
+        /* iOS Safariでは現時点でWeb Speech APIは未対応のため案内を表示 */
+        alert(
+          '音声認識APIはこのブラウザで使用できません。\n\n' +
+          '代わりにiOSキーボードのマイクボタン（🎤）をご利用ください。\n' +
+          'テキスト欄をタップ → キーボード左下またはスペースバー隣のマイクアイコンを押して話しかけてください。'
+        );
+        return;
+      }
+
+      /* 録音中なら停止 */
+      if (btn.dataset.active === 'true') {
+        if (recognition) recognition.stop();
+        btn.dataset.active = 'false';
+        btn.textContent    = '🎤';
+        btn.setAttribute('aria-label',
+          btn.getAttribute('aria-label').replace('停止', '開始'));
+        announce('音声入力を停止しました');
+        return;
+      }
+
+      recognition             = new SpeechRec();
+      recognition.lang        = 'ja-JP';
+      recognition.continuous  = true;
+      recognition.interimResults = false;
+
+      recognition.onresult = ev => {
+        const target = document.getElementById(targetId);
+        const text   = ev.results[ev.results.length - 1][0].transcript;
+        target.value = (target.value ? target.value + '\n' : '') + text;
+        announce('認識結果：' + text);
+      };
+
+      recognition.onerror = () => {
+        btn.dataset.active = 'false';
+        btn.textContent    = '🎤';
+        announce('音声認識でエラーが発生しました');
+      };
+
+      recognition.onend = () => {
+        btn.dataset.active = 'false';
+        btn.textContent    = '🎤';
+      };
+
+      recognition.start();
+      btn.dataset.active = 'true';
+      btn.textContent    = '⏹';
+      announce('音声入力を開始しました。話し終わったら停止ボタンを押してください。');
+    }
+
+    /* ─── エスケープ ─────────────────────────────── */
+    /* ─── 本人・家族申告 ─────────────────────────── */
+    const PIN_MAX = 3; // ピン留め最大件数
+
+    function startSelfReport() {
+      // 今日の日付をセット
+      document.getElementById('sf-date').value = new Date().toISOString().slice(0, 10);
+      updateSelfForm();
+      showPage('self');
+    }
+
+    // 申告者切り替えでフォームを更新
+    function updateSelfForm() {
+      const subj    = document.getElementById('sf-subject').value;
+      const isSanae = subj === '早南江';
+      const danSec   = document.getElementById('sf-sec-dan');
+      const sanaeSec = document.getElementById('sf-sec-sanae');
+      danSec.style.display   = isSanae ? 'none' : '';
+      sanaeSec.style.display = isSanae ? '' : 'none';
+      // disabled制御
+      danSec.querySelectorAll('input,textarea').forEach(el => { el.disabled = isSanae; });
+      sanaeSec.querySelectorAll('input,textarea').forEach(el => { el.disabled = !isSanae; });
+    }
+
+    function clearSelfForm() {
+      document.getElementById('self-form').reset();
+      document.getElementById('sf-date').value = new Date().toISOString().slice(0, 10);
+      document.getElementById('sf-save-btn').textContent = '申告を保存する';
+      selfEditingId = null;
+      selfEditingBeforeSnapshot = null;
+      updateSelfForm();
+      announce('フォームをクリアしました');
+    }
+
+    let selfEditingId = null; // 本人申告の編集中ID
+    let selfEditingBeforeSnapshot = null; // V2: 編集履歴用に、編集開始時点のクラウド上の内容を保持
+
+    async function saveSelfReport(e) {
+      e.preventDefault();
+      const form    = document.getElementById('self-form');
+      const dateVal = document.getElementById('sf-date').value;
+      if (!dateVal) {
+        announce('日付を入力してください');
+        document.getElementById('sf-date').focus();
+        return;
+      }
+
+      const subj    = document.getElementById('sf-subject').value;
+      const doPin   = document.getElementById('sf-pin').checked;
+      const valOf2  = (name) => { const el = form.querySelector(`input[name="${name}"]:checked`); return el ? el.value : ''; };
+      const txt     = (id) => { const el = document.getElementById(id); return el ? el.value.trim() : ''; };
+
+      const rec = {
+        id:            selfEditingId || (Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 6)),
+        savedAt:       Date.now(),
+        is_self_report: true,
+        pinned:        doPin,
+        sf_subject:    subj,
+        subject:       subj,
+        date:          dateVal,
+        start:         document.getElementById('sf-start').value,
+        end:           document.getElementById('sf-end').value,
+        // 旦の体調
+        sf_condition:  valOf2('sf_condition'),
+        sf_mood:       valOf2('sf_mood'),
+        sf_food:       valOf2('sf_food'),
+        sf_vision:     valOf2('sf_vision'),
+        sf_vision_note: txt('sf-vision-note'),
+        // 早南江の体調
+        sf_s_condition: valOf2('sf_s_condition'),
+        sf_cardiac:     valOf2('sf_cardiac'),
+        sf_cardiac_note: txt('sf-cardiac-note'),
+        sf_joint:       valOf2('sf_joint'),
+        sf_joint_note:  txt('sf-joint-note'),
+        sf_s_food:      valOf2('sf_s_food'),
+        // バイタル自己測定（参考値）
+        sf_temp:       txt('sf-temp'),
+        sf_bph:        txt('sf-bph'),
+        sf_bpl:        txt('sf-bpl'),
+        sf_pulse:      txt('sf-pulse'),
+        sf_spo2:       txt('sf-spo2'),
+        // 希望・申し送り
+        sf_okuri:      txt('sf-okuri'),
+      };
+
+      // V2: 過去ログはクラウドが唯一の情報源のため、ピン留め上限の判定も
+      // クラウドから取得した最新の状態をもとに行う
+      await loadCloudLog();
+
+      // ピン留め上限管理：MAX件を超えたら古いものを自動解除
+      // V2: 自動解除した記録もクラウド側の「ピン留め済み一覧」に反映されるよう、
+      // 変更前・変更後をautoUnpinnedに控えておき、後でクラウドへも同期する
+      const autoUnpinned = [];
+      if (doPin) {
+        const pinned = cloudLog
+          .filter(r => r.is_self_report && r.pinned && r.id !== rec.id)
+          .sort((a, b) => (a.savedAt || 0) - (b.savedAt || 0));
+        while (pinned.length >= PIN_MAX) {
+          const oldest = pinned.shift();
+          autoUnpinned.push({ before: oldest, after: { ...oldest, pinned: false, editedAt: Date.now() } });
+        }
+      }
+
+      // V2: 端末には記録を永続保存しない（送信失敗時の一時保存は
+      // submitToCloud() 内の未送信キューが担う）
+      const wasEditing = !!selfEditingId; // clearSelfForm()がselfEditingIdをリセットする前に控えておく
+      if (wasEditing && selfEditingBeforeSnapshot) {
+        rec.savedAt = selfEditingBeforeSnapshot.savedAt;
+      }
+      if (wasEditing) rec.editedAt = Date.now();
+
+      // V2: クラウドへ送信（記録本体 → 続けて自動ピン留め解除分）
+      const saveBtn = document.getElementById('sf-save-btn');
+      if (saveBtn) saveBtn.disabled = true;
+      announce(wasEditing ? '申告を更新しています…' : '申告を保存しています…');
+
+      const payload = {
+        action: wasEditing ? 'edit' : 'submit',
+        role:   userRole,
+        record: rec
+      };
+      if (wasEditing && selfEditingBeforeSnapshot) payload.before = selfEditingBeforeSnapshot;
+      const sendResult = await submitToCloud(payload, (wasEditing ? '更新' : '新規') + '本人申告：' + rec.date);
+
+      for (const item of autoUnpinned) {
+        await submitToCloud(
+          { action: 'edit', role: userRole, record: item.after, before: item.before },
+          'ピン留め自動解除：' + item.after.date
+        );
+      }
+
+      if (saveBtn) saveBtn.disabled = false;
+      announce(
+        (wasEditing ? '申告を更新しました。' : '申告を保存しました。' + (doPin ? 'ホーム画面にピン留めしました。' : '')) +
+        (sendResult.sent ? '' : sendResult.message) +
+        'ホーム画面に戻ります。'
+      );
+
+      clearSelfForm();
+      // V2: 内部のpage-home/page-logではなく、必ずhome.htmlへ戻す
+      location.href = wasEditing ? 'home.html?tab=log' : 'home.html';
+    }
+
+    // 過去ログから本人申告の編集
+    // V2: 過去ログはクラウドが唯一の情報源のため、編集開始時にクラウドから取得する
+    async function editSelfRecord(id) {
+      await loadCloudLog();
+      const r = cloudLog.find(x => x.id === id && x.is_self_report);
+      if (!r) {
+        alert('この申告記録が見つかりませんでした。すでに削除されたか、他の端末で編集された可能性があります。');
+        location.href = 'home.html?tab=log';
+        return;
+      }
+      selfEditingId = id;
+      selfEditingBeforeSnapshot = r;
+      currentPrintRecord = id;
+
+      document.getElementById('self-form').reset();
+      document.getElementById('sf-subject').value = r.sf_subject || r.subject || '旦';
+      document.getElementById('sf-date').value    = r.date    || '';
+      document.getElementById('sf-start').value   = r.start   || '';
+      document.getElementById('sf-end').value     = r.end     || '';
+      document.getElementById('sf-pin').checked   = !!r.pinned;
+
+      // V2ロール制御：ヘルパーは当日分の申告のみピン留め解除（チェック変更）可
+      const todayStr = new Date().toISOString().slice(0, 10);
+      const pinCheckbox = document.getElementById('sf-pin');
+      pinCheckbox.disabled = (userRole !== 'owner' && r.date !== todayStr);
+
+      const set = (id, val) => { const el = document.getElementById(id); if (el && val) el.value = val; };
+      const setR = (name, val) => { if (!val) return; const el = document.querySelector(`input[name="${name}"][value="${CSS.escape(val)}"]`); if (el) el.checked = true; };
+
+      setR('sf_condition',  r.sf_condition);
+      setR('sf_mood',       r.sf_mood);
+      setR('sf_food',       r.sf_food);
+      setR('sf_vision',     r.sf_vision);
+      set('sf-vision-note', r.sf_vision_note);
+      setR('sf_s_condition', r.sf_s_condition);
+      setR('sf_cardiac',    r.sf_cardiac);
+      set('sf-cardiac-note', r.sf_cardiac_note);
+      setR('sf_joint',      r.sf_joint);
+      set('sf-joint-note',  r.sf_joint_note);
+      setR('sf_s_food',     r.sf_s_food);
+      set('sf-temp',        r.sf_temp);
+      set('sf-bph',         r.sf_bph);
+      set('sf-bpl',         r.sf_bpl);
+      set('sf-pulse',       r.sf_pulse);
+      set('sf-spo2',        r.sf_spo2);
+      set('sf-okuri',       r.sf_okuri);
+
+      updateSelfForm();
+      document.getElementById('sf-save-btn').textContent = '変更を保存する';
+      showPage('self');
+      announce('本人申告の編集モードです。' + r.date + 'の記録を読み込みました。');
+    }
+
+    // 印刷用エリアの生成（本人申告版）
+    function buildSelfPrintArea(r) {
+      const subj = r.sf_subject || r.subject || '旦';
+      const isSanae = subj === '早南江';
+      const timeStr = [r.start, r.end].filter(Boolean).join(' ～ ');
+      const bpStr = (r.sf_bph && r.sf_bpl) ? r.sf_bph + '/' + r.sf_bpl + ' mmHg' : '';
+
+      function row(key, val) {
+        if (!val) return '';
+        return '<tr><td class="p-key">' + escHtml(key) + '</td><td class="p-val">' + escHtml(val) + '</td></tr>';
+      }
+
+      let html = '<h1>引き継ぎ連絡票（本人・家族申告）</h1>';
+
+      html += '<div class="p-section">' +
+        '<div class="p-sec-bar p-sec-common">基本情報</div>' +
+        '<table class="p-table">' +
+        '<tr><td class="p-key">日付</td><td class="p-val">' + escHtml(r.date) + '</td>' +
+        '<td class="p-key">記録時刻</td><td class="p-val">' + escHtml(timeStr) + '</td></tr>' +
+        '<tr><td class="p-key">申告者</td><td class="p-val" colspan="3">' + escHtml(subj) + '</td></tr>' +
+        (r.pinned ? '<tr><td class="p-key">ピン留め</td><td class="p-val" colspan="3">ホーム画面にピン留めあり</td></tr>' : '') +
+        '</table></div>';
+
+      if (!isSanae) {
+        html += '<div class="p-section">' +
+          '<div class="p-sec-bar p-sec-common">体調・状態（旦）</div>' +
+          '<table class="p-table">' +
+          row('体調全般',   r.sf_condition) +
+          row('気分',       r.sf_mood) +
+          row('食事・水分', r.sf_food) +
+          row('見えにくさ', r.sf_vision ? r.sf_vision + (r.sf_vision_note ? '：' + r.sf_vision_note : '') : '') +
+          '</table></div>';
+      } else {
+        html += '<div class="p-section">' +
+          '<div class="p-sec-bar p-sec-common">体調・状態（早南江）</div>' +
+          '<table class="p-table">' +
+          row('体調全般',       r.sf_s_condition) +
+          row('動悸・胸部症状', r.sf_cardiac ? r.sf_cardiac + (r.sf_cardiac_note ? '：' + r.sf_cardiac_note : '') : '') +
+          row('腰痛・股関節痛', r.sf_joint ? r.sf_joint + (r.sf_joint_note ? '：' + r.sf_joint_note : '') : '') +
+          row('食事・水分',     r.sf_s_food) +
+          '</table></div>';
+      }
+
+      if (r.sf_temp || r.sf_bph || r.sf_pulse || r.sf_spo2) {
+        html += '<div class="p-section">' +
+          '<div class="p-sec-bar p-sec-common">バイタル自己測定（参考値）</div>' +
+          '<table class="p-table"><tr class="p-vital-row">' +
+          '<td class="p-key">体温</td><td class="p-val">' + escHtml(r.sf_temp ? r.sf_temp + ' ℃' : '') + '</td>' +
+          '<td class="p-key">血圧</td><td class="p-val">' + escHtml(bpStr) + '</td>' +
+          '<td class="p-key">脈拍</td><td class="p-val">' + escHtml(r.sf_pulse ? r.sf_pulse + ' 回/分' : '') + '</td>' +
+          '<td class="p-key">SpO₂</td><td class="p-val">' + escHtml(r.sf_spo2 ? r.sf_spo2 + ' %' : '') + '</td>' +
+          '</tr></table></div>';
+      }
+
+      if (r.sf_okuri) {
+        html += '<div class="p-section">' +
+          '<div class="p-sec-bar p-sec-common">次の援助者への希望・申し送り事項</div>' +
+          '<table class="p-table"><tr><td class="p-val p-okuri-val" colspan="2">' +
+          escHtml(r.sf_okuri) + '</td></tr></table></div>';
+      }
+
+      html += '<p class="p-note">※ 緊急度の高い内容には「【要確認】」と記入してください。</p>';
+      html += '<p class="p-note" style="margin-top:4pt">本記録は本人・家族による申告です。援助者による記録とは区別して管理されています。</p>';
+
+      return html;
+    }
+
+    /* ─── 設定画面 ─────────────────────────────────── */
+    const DAY_NAMES = { 0:'日曜', 1:'月曜', 2:'火曜', 3:'水曜', 4:'木曜', 5:'金曜', 6:'土曜' };
+
+    function renderSettings() {
+      renderSchedList();
+      renderOfficeList();
+      renderStaffList();
+    }
+
+    // ── スケジュール ──────────────────────────────────
+    function renderSchedList() {
+      const items = getScheduleItems() || (() => {
+        // デフォルトをflat配列に変換
+        const arr = [];
+        Object.entries(SCHEDULE_DEFAULT).forEach(([dow, list]) => {
+          list.forEach(item => arr.push({ dow: Number(dow), time: item.time, svc: item.svc }));
+        });
+        return arr;
+      })();
+      const el = document.getElementById('sched-list');
+      if (!el) return;
+      if (items.length === 0) {
+        el.innerHTML = '<p style="font-size:0.875rem;color:var(--txt-sub)">スケジュールがありません</p>';
+        return;
+      }
+      const sorted = [...items].sort((a, b) => a.dow !== b.dow ? a.dow - b.dow : (a.time||'').localeCompare(b.time||''));
+      el.innerHTML = sorted.map((item, i) =>
+        `<div role="listitem" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">` +
+        `<span style="min-width:50px;font-size:0.875rem;font-weight:600">${escHtml(DAY_NAMES[item.dow]||'')}</span>` +
+        `<span style="min-width:110px;font-size:0.875rem;color:var(--txt-sub)">${escHtml(item.time||'')}</span>` +
+        `<span style="flex:1;font-size:0.9375rem">${escHtml(item.svc||'')}</span>` +
+        `<button class="btn-danger" style="font-size:0.8125rem;padding:4px 10px;min-height:36px"` +
+        ` onclick="deleteSchedItem(${i})" aria-label="${escHtml(DAY_NAMES[item.dow]||'')}${escHtml(item.svc||'')}を削除">削除</button>` +
+        `</div>`
+      ).join('');
+    }
+
+    function addSchedItem() {
+      const dow   = Number(document.getElementById('s-sched-day').value);
+      const svc   = document.getElementById('s-sched-svc').value.trim();
+      const start = document.getElementById('s-sched-start').value;
+      const end   = document.getElementById('s-sched-end').value;
+      if (!svc) { announce('サービス名を入力してください'); return; }
+      const time  = start && end ? start + '–' + end : (start || end || '');
+      // 既存or初期値から配列を作る
+      let items = getScheduleItems();
+      if (!items) {
+        items = [];
+        Object.entries(SCHEDULE_DEFAULT).forEach(([d, list]) => {
+          list.forEach(item => items.push({ dow: Number(d), time: item.time, svc: item.svc }));
+        });
+      }
+      items.push({ dow, time, svc });
+      saveSetting(SCHED_KEY, items);
+      document.getElementById('s-sched-svc').value   = '';
+      document.getElementById('s-sched-start').value = '';
+      document.getElementById('s-sched-end').value   = '';
+      renderSchedList();
+      announce(DAY_NAMES[dow] + ' ' + svc + 'を追加しました');
+    }
+
+    function deleteSchedItem(idx) {
+      let items = getScheduleItems();
+      if (!items) {
+        items = [];
+        Object.entries(SCHEDULE_DEFAULT).forEach(([d, list]) => {
+          list.forEach(item => items.push({ dow: Number(d), time: item.time, svc: item.svc }));
+        });
+      }
+      const sorted = [...items].sort((a, b) => a.dow !== b.dow ? a.dow - b.dow : (a.time||'').localeCompare(b.time||''));
+      const target = sorted[idx];
+      const fi = items.findIndex(x => x.dow === target.dow && x.time === target.time && x.svc === target.svc);
+      if (fi !== -1) items.splice(fi, 1);
+      saveSetting(SCHED_KEY, items);
+      renderSchedList();
+      announce('削除しました');
+    }
+
+    // ── 事業所 ────────────────────────────────────────
+    function renderOfficeList() {
+      const items = getOfficeItems();
+      const el = document.getElementById('office-list');
+      if (!el) return;
+      if (items.length === 0) {
+        el.innerHTML = '<p style="font-size:0.875rem;color:var(--txt-sub)">事業所がありません</p>';
+        return;
+      }
+      const sorted = [...items].sort((a, b) => a.label.localeCompare(b.label, 'ja'));
+      const forLabel = { both:'両方', dan:'旦のみ', sanae:'早南江のみ' };
+      el.innerHTML = sorted.map((item, i) =>
+        `<div role="listitem" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">` +
+        `<span style="flex:1;font-size:0.9375rem">${escHtml(item.label)}</span>` +
+        `<span style="font-size:0.8125rem;color:var(--txt-sub);white-space:nowrap">${escHtml(forLabel[item.for]||'')}</span>` +
+        `<button class="btn-danger" style="font-size:0.8125rem;padding:4px 10px;min-height:36px"` +
+        ` onclick="deleteOfficeItem('${escAttr(item.value)}')" aria-label="${escHtml(item.label)}を削除">削除</button>` +
+        `</div>`
+      ).join('');
+    }
+
+    function addOfficeItem() {
+      const name = document.getElementById('s-office-name').value.trim();
+      const forV = document.getElementById('s-office-for').value;
+      if (!name) { announce('事業所名を入力してください'); return; }
+      const items = getOfficeItems();
+      if (items.some(o => o.value === name)) { announce('すでに登録されています'); return; }
+      items.push({ value: name, label: name, for: forV });
+      saveSetting(OFFICE_KEY, items);
+      document.getElementById('s-office-name').value = '';
+      renderOfficeList();
+      // フォームのセレクトも更新
+      const subj = document.querySelector('#record-form input[name="subject"]:checked');
+      updateOffice(subj ? subj.value : '旦', '');
+      announce(name + 'を追加しました');
+    }
+
+    function deleteOfficeItem(val) {
+      let items = getOfficeItems();
+      items = items.filter(o => o.value !== val);
+      saveSetting(OFFICE_KEY, items);
+      renderOfficeList();
+      const subj = document.querySelector('#record-form input[name="subject"]:checked');
+      updateOffice(subj ? subj.value : '旦', '');
+      announce('削除しました');
+    }
+
+    // ── 担当者 ────────────────────────────────────────
+    function renderStaffList() {
+      const items = getStaffItems();
+      const el = document.getElementById('staff-list');
+      if (!el) return;
+      if (items.length === 0) {
+        el.innerHTML = '<p style="font-size:0.875rem;color:var(--txt-sub)">担当者が登録されていません</p>';
+        return;
+      }
+      const sorted = [...items].sort((a, b) => a.localeCompare(b, 'ja'));
+      el.innerHTML = sorted.map(name =>
+        `<div role="listitem" style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border)">` +
+        `<span style="flex:1;font-size:0.9375rem">${escHtml(name)}</span>` +
+        `<button class="btn-danger" style="font-size:0.8125rem;padding:4px 10px;min-height:36px"` +
+        ` onclick="deleteStaffItem('${escAttr(name)}')" aria-label="${escHtml(name)}を削除">削除</button>` +
+        `</div>`
+      ).join('');
+    }
+
+    function addStaffItem() {
+      const name = document.getElementById('s-staff-name').value.trim();
+      if (!name) { announce('担当者名を入力してください'); return; }
+      const items = getStaffItems();
+      if (items.includes(name)) { announce('すでに登録されています'); return; }
+      items.push(name);
+      saveSetting(STAFF_KEY, items);
+      document.getElementById('s-staff-name').value = '';
+      renderStaffList();
+      updateStaffSelect('');
+      announce(name + 'を追加しました');
+    }
+
+    function deleteStaffItem(name) {
+      let items = getStaffItems().filter(n => n !== name);
+      saveSetting(STAFF_KEY, items);
+      renderStaffList();
+      updateStaffSelect('');
+      announce('削除しました');
+    }
+
+    // 記録フォームの直接入力欄から担当者一覧に追加する
+    async function addStaffFromForm() {
+      const input = document.getElementById('f-staff-custom');
+      if (!input) return;
+      const name = input.value.trim();
+      if (!name) {
+        announce('担当者名を入力してから追加ボタンを押してください');
+        input.focus();
+        return;
+      }
+      const items = getStaffItems();
+      if (items.includes(name)) {
+        announce(name + 'はすでに担当者一覧に登録されています');
+        return;
+      }
+      // 担当者一覧に追加して保存
+      // V2: クラウド（GAS）に接続済みなら全端末に反映されるようクラウド側を更新し、
+      // 未接続時はこれまで通りローカルのみに保存する（フォールバック）
+      const newItems = [...items, name];
+      announce('担当者を追加しています…');
+      if (CONFIG.GAS_URL) {
+        try {
+          const result = await saveCloudSetting('staff', newItems);
+          if (!result || !result.ok) throw new Error((result && result.error) || '保存に失敗しました');
+        } catch (e) {
+          announce('クラウドへの担当者追加に失敗しました。通信環境をご確認のうえ、もう一度お試しください。');
+          return;
+        }
+      }
+      cloudSettings.staff = newItems;
+      saveSetting(STAFF_KEY, newItems);
+      // セレクトを再構築して追加した担当者を自動選択
+      updateStaffSelect(name);
+      // セレクトで追加した名前を選択した状態にする
+      const sel = document.getElementById('f-staff-select');
+      if (sel) sel.value = name;
+      // カスタム入力欄を非表示に戻す
+      onStaffSelectChange();
+      // 設定画面の担当者一覧も更新（設定画面が開かれていた場合）
+      renderStaffList();
+      announce(name + 'を担当者一覧に追加しました。担当者名の選択欄で選択された状態になりました。');
+    }
+
+    // ── データ管理 ─────────────────────────────────────
+    function exportData() {
+      const records  = getRecords();
+      const schedule = getScheduleItems();
+      const offices  = getOfficeItems();
+      const staff    = getStaffItems();
+      const data     = { exportedAt: new Date().toISOString(), records, schedule, offices, staff };
+      const json     = JSON.stringify(data, null, 2);
+      const fileName = '引き継ぎ連絡票_バックアップ_' + new Date().toISOString().slice(0, 10) + '.json';
+
+      // iOSのSafariかどうかを判定
+      const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent) && !!navigator.userAgent.match(/AppleWebKit/);
+
+      if (!isIOS) {
+        // PC・Android：Blob URLでダウンロード
+        try {
+          const blob = new Blob([json], { type: 'application/json' });
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement('a');
+          a.href     = url;
+          a.download = fileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          announce('エクスポートしました');
+          return;
+        } catch(e) {
+          // 失敗したらiOSと同じフォールバックへ
+        }
+      }
+
+      // iOS Safari・フォールバック：モーダルにJSONを表示してコピー
+      document.getElementById('export-json-area').value  = json;
+      document.getElementById('export-filename').textContent = fileName;
+      document.getElementById('export-copy-btn').textContent = 'コピーする';
+      const modal = document.getElementById('export-modal');
+      modal.style.display = 'flex';
+      setTimeout(() => document.getElementById('export-copy-btn').focus(), 80);
+      announce('JSONデータをモーダルに表示しました。コピーするボタンを押してクリップボードにコピーしてください。');
+    }
+
+    function copyExportData() {
+      const area = document.getElementById('export-json-area');
+      area.select();
+      // iOS対応のコピー処理
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(area.value).then(() => {
+          const btn = document.getElementById('export-copy-btn');
+          btn.textContent = 'コピーしました ✓';
+          setTimeout(() => { btn.textContent = 'コピーする'; }, 2500);
+          announce('クリップボードにコピーしました。メモアプリ等に貼り付けて保存してください。');
+        }).catch(() => {
+          // execCommandフォールバック
+          document.execCommand('copy');
+          announce('コピーしました');
+        });
+      } else {
+        document.execCommand('copy');
+        announce('コピーしました');
+      }
+    }
+
+    function closeExportModal() {
+      document.getElementById('export-modal').style.display = 'none';
+      announce('エクスポートモーダルを閉じました');
+      setTimeout(() => {
+        const btn = document.querySelector('button[onclick="exportData()"]');
+        if (btn) btn.focus();
+      }, 80);
+    }
+
+    /* ─── データインポート（復元） ─────────────────── */
+    function openImportModal() {
+      document.getElementById('import-json-area').value = '';
+      document.getElementById('import-file-input').value = '';
+      document.getElementById('import-status').textContent = '';
+      document.getElementById('import-mode-merge').checked = true;
+      document.getElementById('import-include-settings').checked = true;
+      const modal = document.getElementById('import-modal');
+      modal.style.display = 'flex';
+      setTimeout(() => document.getElementById('import-modal-title').focus(), 80);
+      announce('インポートモーダルを開きました。ファイルを選択するか、JSONを貼り付けてください。');
+    }
+
+    function cancelImport() {
+      document.getElementById('import-modal').style.display = 'none';
+      announce('インポートモーダルを閉じました');
+      setTimeout(() => {
+        const btn = document.querySelector('button[onclick="openImportModal()"]');
+        if (btn) btn.focus();
+      }, 80);
+    }
+
+    // ファイル選択時：内容をテキストエリアに読み込む
+    function handleImportFile(event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        document.getElementById('import-json-area').value = e.target.result;
+        const status = document.getElementById('import-status');
+        status.textContent = 'ファイル「' + file.name + '」を読み込みました。復元するボタンを押してください。';
+      };
+      reader.onerror = () => {
+        const status = document.getElementById('import-status');
+        status.textContent = 'ファイルの読み込みに失敗しました。';
+      };
+      reader.readAsText(file);
+    }
+
+    // インポートデータの検証：正しい形なら data を返し、不正なら例外を投げる
+    function validateImportData(raw) {
+      let data;
+      try {
+        data = JSON.parse(raw);
+      } catch (e) {
+        throw new Error('JSONとして読み取れませんでした。データが壊れていないか確認してください。');
+      }
+      if (!data || typeof data !== 'object' || Array.isArray(data)) {
+        throw new Error('バックアップの形式が正しくありません。');
+      }
+      // records は必須・配列であること
+      if (!Array.isArray(data.records)) {
+        throw new Error('記録データ（records）が見つかりません。このアプリのバックアップか確認してください。');
+      }
+      // 各レコードが最低限 id を持つか（savedAt が無ければ補完）
+      data.records.forEach(r => {
+        if (!r || typeof r !== 'object') {
+          throw new Error('記録データの中に壊れた項目があります。');
+        }
+      });
+      // 設定系は任意。型だけ緩く確認する
+      if (data.schedule != null && !Array.isArray(data.schedule)) {
+        throw new Error('スケジュールデータの形式が正しくありません。');
+      }
+      if (data.offices != null && !Array.isArray(data.offices)) {
+        throw new Error('事業所データの形式が正しくありません。');
+      }
+      if (data.staff != null && !Array.isArray(data.staff)) {
+        throw new Error('担当者データの形式が正しくありません。');
+      }
+      return data;
+    }
+
+    // 復元実行
+    function runImport() {
+      const status = document.getElementById('import-status');
+      const raw = document.getElementById('import-json-area').value.trim();
+      if (!raw) {
+        status.textContent = 'データがありません。ファイルを選択するかJSONを貼り付けてください。';
+        announce('データがありません。');
+        return;
+      }
+
+      let data;
+      try {
+        data = validateImportData(raw);
+      } catch (e) {
+        status.textContent = 'エラー：' + e.message;
+        announce('インポートに失敗しました。' + e.message);
+        return;
+      }
+
+      const mode = (document.querySelector('input[name="import-mode"]:checked') || {}).value || 'merge';
+      const includeSettings = document.getElementById('import-include-settings').checked;
+
+      // savedAt 欠損を補完（古い・手編集データ対策）
+      const now = Date.now();
+      const incoming = data.records.map(r => ({
+        ...r,
+        savedAt: (typeof r.savedAt === 'number') ? r.savedAt : now,
+      }));
+
+      // 確認ダイアログ
+      const modeLabel = mode === 'replace'
+        ? '【置き換え】現在の記録をすべて削除して復元します'
+        : '【追加（マージ）】現在の記録に統合します';
+      const settingsLabel = includeSettings
+        ? '設定（スケジュール・事業所・担当者）も復元します。'
+        : '設定は復元しません（記録のみ）。';
+      const confirmMsg =
+        modeLabel + '\n' +
+        'バックアップ内の記録：' + incoming.length + '件\n' +
+        settingsLabel + '\n\nよろしいですか？';
+      if (!confirm(confirmMsg)) {
+        status.textContent = 'インポートを中止しました。';
+        announce('インポートを中止しました。');
+        return;
+      }
+
+      // ── 記録の復元 ──
+      let finalRecords;
+      let mergedCount = 0;
+      if (mode === 'replace') {
+        finalRecords = incoming;
+      } else {
+        // マージ：id をキーに統合。同一 idは新しい editedAt/savedAt を優先
+        const map = new Map();
+        const stamp = r => (typeof r.editedAt === 'number' ? r.editedAt : (r.savedAt || 0));
+        getRecords().forEach(r => map.set(r.id, r));
+        incoming.forEach(r => {
+          if (r.id == null) {                 // id 無しは常に新規追加
+            map.set('imported_' + now + '_' + Math.random().toString(36).slice(2), r);
+            return;
+          }
+          const existing = map.get(r.id);
+          if (!existing) { map.set(r.id, r); }
+          else {
+            mergedCount++;
+            if (stamp(r) >= stamp(existing)) map.set(r.id, r); // 新しい方を採用
+          }
+        });
+        finalRecords = Array.from(map.values());
+      }
+      saveRecords(finalRecords);
+
+      // ── 設定の復元 ──
+      if (includeSettings) {
+        if (Array.isArray(data.schedule)) saveSetting(SCHED_KEY, data.schedule);
+        if (Array.isArray(data.offices))  saveSetting(OFFICE_KEY, data.offices);
+        if (Array.isArray(data.staff))    saveSetting(STAFF_KEY, data.staff);
+      }
+
+      // ── 画面更新 ──
+      renderHome();
+      if (typeof renderLog === 'function') renderLog();
+      if (typeof renderSettings === 'function') renderSettings();
+      if (typeof updateStaffSelect === 'function') updateStaffSelect('');
+
+      const resultMsg = mode === 'replace'
+        ? finalRecords.length + '件の記録を復元しました（置き換え）。'
+        : finalRecords.length + '件になりました（' + incoming.length + '件を取り込み、うち' + mergedCount + '件は既存と統合）。';
+      status.textContent = '復元が完了しました。' + resultMsg;
+      announce('復元が完了しました。' + resultMsg);
+
+      // 完了後、少し待ってモーダルを閉じる
+      setTimeout(() => cancelImport(), 1800);
+    }
+
+    function deleteAllData() {
+      if (!confirm('すべての記録データを削除します。この操作は元に戻せません。\n設定（スケジュール・事業所・担当者）は削除されません。\n\nよろしいですか？')) return;
+      try { localStorage.removeItem(STORE_KEY); } catch(e) {}
+      announce('すべての記録を削除しました');
+      renderHome();
+    }
+
+    // ── PIN変更 ──────────────────────────────────────
+    // GAS_URL設定済み：GAS（PropertiesService）の値をその場で更新（自動反映）
+    // GAS_URL未設定：ハッシュ値のみ計算して表示し、config.jsへの反映は手動でGitHubにpush
+    // kind: 'owner' | 'helper'
+    async function changePin(kind) {
+      const prefix    = 'pin-' + kind;
+      const currentEl = document.getElementById(prefix + '-current');
+      const newEl     = document.getElementById(prefix + '-new');
+      const confirmEl = document.getElementById(prefix + '-confirm');
+      const statusEl  = document.getElementById(prefix + '-status');
+      const resultBox = document.getElementById(prefix + '-result');
+      const hashEl    = document.getElementById(prefix + '-hash');
+      const hashKey   = kind === 'owner' ? 'PIN_HASH_OWNER' : 'PIN_HASH_HELPER';
+
+      resultBox.style.display = 'none';
+      statusEl.style.color = '';
+
+      const current  = currentEl.value.trim();
+      const next     = newEl.value.trim();
+      const confirm2 = confirmEl.value.trim();
+
+      if (!/^\d{4}$/.test(current)) {
+        statusEl.textContent = '現在のPINは4桁の数字で入力してください。';
+        statusEl.style.color = 'var(--danger)';
+        announce(statusEl.textContent);
+        return;
+      }
+      if (!/^\d{4}$/.test(next)) {
+        statusEl.textContent = 'PINは4桁の数字で入力してください。';
+        statusEl.style.color = 'var(--danger)';
+        announce(statusEl.textContent);
+        return;
+      }
+      if (next !== confirm2) {
+        statusEl.textContent = '新しいPINが一致しません。もう一度入力してください。';
+        statusEl.style.color = 'var(--danger)';
+        announce(statusEl.textContent);
+        return;
+      }
+      if (next === current) {
+        statusEl.textContent = '現在と同じPINは設定できません。';
+        statusEl.style.color = 'var(--danger)';
+        announce(statusEl.textContent);
+        return;
+      }
+
+      const currentHash = await sha256Hex(current);
+      const newHash     = await sha256Hex(next);
+
+      if (CONFIG.GAS_URL) {
+        statusEl.textContent = '通信中です…';
+        try {
+          const result = await callGas({ action: 'changePin', role: kind, currentHash, newHash });
+          if (result && result.ok) {
+            statusEl.textContent = 'PINを変更しました。次回のログインから新しいPINが有効です。';
+            announce(statusEl.textContent);
+            currentEl.value = ''; newEl.value = ''; confirmEl.value = '';
+          } else {
+            statusEl.textContent = (result && result.error) || '現在のPINが違います。もう一度入力してください。';
+            statusEl.style.color = 'var(--danger)';
+            announce(statusEl.textContent);
+          }
+        } catch (e) {
+          statusEl.textContent = '通信エラーが発生しました。ネットワーク接続をご確認のうえ、もう一度お試しください。';
+          statusEl.style.color = 'var(--danger)';
+          announce(statusEl.textContent);
+        }
+        return;
+      }
+
+      // GAS未接続時のフォールバック：ハッシュ値のみ計算し、手動でconfig.jsに反映してもらう
+      if (currentHash !== CONFIG[hashKey]) {
+        statusEl.textContent = '現在のPINが違います。もう一度入力してください。';
+        statusEl.style.color = 'var(--danger)';
+        announce(statusEl.textContent);
+        return;
+      }
+      hashEl.value = newHash;
+      resultBox.style.display = '';
+      statusEl.textContent =
+        'クラウド（GAS）が未接続のため、ハッシュ値のみ計算しました。下の値をコピーして config.js の ' + hashKey + ' に貼り付け、GitHubにpushすると変更が反映されます。';
+      announce('新しいPINのハッシュ値を計算しました。config.js を更新してGitHubにpushしてください。');
+      currentEl.value = ''; newEl.value = ''; confirmEl.value = '';
+    }
+
+    function copyPinHash(kind) {
+      const hashEl = document.getElementById('pin-' + kind + '-hash');
+      hashEl.select();
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(hashEl.value)
+          .then(() => announce('ハッシュ値をコピーしました。config.js に貼り付けてください。'))
+          .catch(() => { document.execCommand('copy'); announce('コピーしました'); });
+      } else {
+        document.execCommand('copy');
+        announce('コピーしました');
+      }
+    }
+
+    function escHtml(s) {
+      if (!s) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function escAttr(s) {
+      return escHtml(s).replace(/'/g, '&#39;');
+    }
+
+    /* ─── キーボード操作 ─────────────────────────── */
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        const exportModal = document.getElementById('export-modal');
+        const importModal = document.getElementById('import-modal');
+        const exitModal   = document.getElementById('exit-modal');
+        if (exportModal && exportModal.style.display !== 'none') {
+          closeExportModal();
+        } else if (importModal && importModal.style.display !== 'none') {
+          cancelImport();
+        } else if (exitModal && exitModal.style.display !== 'none') {
+          closeExitModal();
+        } else {
+          closeModal();
+        }
+      }
+    });
+
+    /* ─── 初期化 ─────────────────────────────────── */
+    document.getElementById('f-date').value =
+      new Date().toISOString().slice(0, 10);
+
+    (async function initApp() {
+      // V2: 事業所一覧・担当者一覧をクラウドから取得してからフォームを組み立てる
+      // （getOfficeItems/getStaffItemsがこのキャッシュを参照するため）
+      if (currentSession) await loadCloudSettings();
+
+      updateStaffSelect('');  // 担当者セレクトを初期化
+      updateSubject();        // 対象者「旦」で初期化（早南江専用要素を非表示に）
+      applyRoleRestrictions(); // V2: ロールに応じたUI非表示
+      renderHome();
+
+      /* V2: home.htmlからの?viewパラメータに応じて初期画面を切り替え */
+      if (editIdParam) {
+        editRecord(editIdParam);
+      } else if (editSelfIdParam) {
+        editSelfRecord(editSelfIdParam);
+      } else if (initialView === 'form') {
+        showPage('form');
+      } else if (initialView === 'self') {
+        startSelfReport();
+      }
+    })();
+  </script>
+</body>
+</html>

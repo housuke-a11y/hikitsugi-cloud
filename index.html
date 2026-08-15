@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="訪問介護・医療職向け引き継ぎ連絡票アプリ（クラウド版）。VoiceOver対応。">
+
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="引き継ぎ連絡票">
+  <meta name="theme-color" content="#ffffff">
+
+  <title>引き継ぎ連絡票</title>
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --focus:   #0055cc;
+      --danger:  #c0392b;
+      --bg:      #f4f4f0;
+      --surface: #ffffff;
+      --border:  #c8c8c8;
+      --txt:     #111111;
+      --txt-sub: #555555;
+      --font: -apple-system, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+              "Noto Sans JP", sans-serif;
+      --rad-md: 8px;
+      --rad-lg: 12px;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg:      #1a1a1a;
+        --surface: #2a2a2a;
+        --border:  #555;
+        --txt:     #f0f0f0;
+        --txt-sub: #aaaaaa;
+      }
+      .card-danger { background: #3a1f1f; border-color: #7a3a3a; color: #ff8a8a; }
+    }
+
+    html { font-size: 16px; }
+
+    body {
+      font-family: var(--font);
+      font-size: 1rem;
+      line-height: 1.65;
+      background: var(--bg);
+      color: var(--txt);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+
+    .sr-only {
+      position: absolute;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0,0,0,0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    #app {
+      max-width: 540px;
+      margin: 0 auto;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+      padding-top: calc(24px + env(safe-area-inset-top));
+      gap: 24px;
+      text-align: center;
+    }
+
+    h1 {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--txt);
+    }
+
+    .lead {
+      font-size: 0.9375rem;
+      color: var(--txt-sub);
+    }
+
+    .btn-primary {
+      display: block;
+      width: 100%;
+      max-width: 320px;
+      padding: 16px;
+      font-family: var(--font);
+      font-size: 1.0625rem;
+      font-weight: 600;
+      background: var(--focus);
+      color: #fff;
+      border: none;
+      border-radius: var(--rad-md);
+      cursor: pointer;
+      min-height: 52px;
+      text-align: center;
+    }
+    .btn-primary:focus-visible { outline: 3px solid var(--focus); outline-offset: 3px; }
+
+    .card {
+      background: var(--surface);
+      border-radius: var(--rad-lg);
+      border: 1px solid var(--border);
+      padding: 16px;
+      max-width: 320px;
+      font-size: 0.8125rem;
+      color: var(--txt-sub);
+    }
+
+    .card-danger {
+      background: #fff0f0;
+      border-color: #e0aaaa;
+      color: var(--danger);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ライブリージョン（aria-live通知） -->
+  <div id="live-region" role="status" aria-live="polite" aria-atomic="true" class="sr-only"></div>
+
+  <div id="app">
+    <div>
+      <h1>引き継ぎ連絡票</h1>
+      <p class="lead">訪問介護・医療職向け 記録共有システム</p>
+    </div>
+
+    <button id="start-btn" class="btn-primary" type="button"
+            aria-label="作業を開始します。次に暗証番号の入力画面に進みます"
+            onclick="startWork()">
+      作業開始
+    </button>
+
+    <p class="card" role="note">
+      このアプリは暗証番号（PIN）による認証が必要です。<br>
+      PINは担当者にお尋ねください。
+    </p>
+
+    <!-- V2: 前回の送信失敗で端末に残っている未送信データがある場合の警告 -->
+    <p id="unsent-notice" class="card card-danger" role="alert" style="display:none"></p>
+  </div>
+
+  <script src="config.js"></script>
+  <script>
+    // index.htmlに戻ってきた時点でロール情報は破棄する（作業のやり直し扱い）
+    clearSession();
+
+    // V2: アプリ起動時、前回送信に失敗して端末内に一時保存されたままの
+    // 記録がないか確認する（実際の再送信は認証後のホーム画面から行う）
+    (function checkUnsentOnLaunch() {
+      const queue = getUnsentQueue();
+      if (queue.length === 0) return;
+      const el = document.getElementById('unsent-notice');
+      el.textContent =
+        '前回の未送信データが' + queue.length + '件残っています。作業開始後、ホーム画面から再送信してください。';
+      el.style.display = '';
+    })();
+
+    function startWork() {
+      if (isLockedOut()) {
+        const remainMin = Math.ceil(getLockoutRemainingMs() / 60000);
+        announce('現在アクセスがブロックされています。約' + remainMin + '分後に再度お試しください。');
+        alert('現在アクセスがブロックされています。約' + remainMin + '分後に再度お試しください。');
+        return;
+      }
+      location.href = 'pin.html';
+    }
+
+    function announce(msg) {
+      const el = document.getElementById('live-region');
+      el.textContent = '';
+      requestAnimationFrame(() => { el.textContent = msg; });
+    }
+  </script>
+
+</body>
+</html>

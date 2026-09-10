@@ -4,3 +4,9 @@
 
 # 実名・具体的な病名を含む開発用の仕様書は非公開のためpushしない。
 hikitsugi_cloud_instructions_v2.md
+
+# QRコード画像は、このシステムのURL情報なのでプッシュしない。
+qrcode_hikitsugi-cloud.png
+
+# 実名・具体的な依頼内容を含む家族向け配布物のためプッシュしない。
+介護記録の入力のお願い.docx

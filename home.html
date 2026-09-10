@@ -1477,12 +1477,14 @@
           ['体調全般',     r.sf_condition],
           ['気分',         r.sf_mood],
           ['食事・水分',   r.sf_food],
+          ['疼痛・しびれ等', r.sf_pain ? r.sf_pain + (r.sf_pain_note ? '：' + r.sf_pain_note : '') : ''],
           ['見えにくさ',   r.sf_vision],
           ['視覚困りごと', r.sf_vision_note],
         ] : [
           ['体調全般（早南江）',    r.sf_s_condition],
           ['動悸・胸部症状',        r.sf_cardiac ? r.sf_cardiac + (r.sf_cardiac_note ? '：' + r.sf_cardiac_note : '') : ''],
           ['腰痛・股関節痛',        r.sf_joint   ? r.sf_joint   + (r.sf_joint_note   ? '：' + r.sf_joint_note   : '') : ''],
+          ['疼痛・しびれ等のその他訴え', r.sf_s_pain ? r.sf_s_pain + (r.sf_spain_note ? '：' + r.sf_spain_note : '') : ''],
           ['食事・水分（早南江）',  r.sf_s_food],
         ]),
         ['体温（参考）',    r.sf_temp  ? r.sf_temp  + ' ℃'    : ''],
@@ -1789,6 +1791,7 @@
           row('体調全般',   r.sf_condition) +
           row('気分',       r.sf_mood) +
           row('食事・水分', r.sf_food) +
+          row('疼痛・しびれ等', r.sf_pain ? r.sf_pain + (r.sf_pain_note ? '：' + r.sf_pain_note : '') : '') +
           row('見えにくさ', r.sf_vision ? r.sf_vision + (r.sf_vision_note ? '：' + r.sf_vision_note : '') : '') +
           '</table></div>';
       } else {
@@ -1798,6 +1801,7 @@
           row('体調全般',       r.sf_s_condition) +
           row('動悸・胸部症状', r.sf_cardiac ? r.sf_cardiac + (r.sf_cardiac_note ? '：' + r.sf_cardiac_note : '') : '') +
           row('腰痛・股関節痛', r.sf_joint ? r.sf_joint + (r.sf_joint_note ? '：' + r.sf_joint_note : '') : '') +
+          row('疼痛・しびれ等のその他訴え', r.sf_s_pain ? r.sf_s_pain + (r.sf_spain_note ? '：' + r.sf_spain_note : '') : '') +
           row('食事・水分',     r.sf_s_food) +
           '</table></div>';
       }

@@ -1289,6 +1289,21 @@
               </div>
             </fieldset>
 
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">疼痛・しびれ等</legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_pain" id="sfp1" value="なし"><label for="sfp1">なし</label></div>
+                <div class="check-item"><input type="radio" name="sf_pain" id="sfp2" value="あり"><label for="sfp2">あり</label></div>
+              </div>
+              <div class="mic-row" style="margin-top:8px">
+                <textarea id="sf-pain-note" name="sf_pain_note" rows="2"
+                          placeholder="具体的な内容（音声または入力）"
+                          aria-label="疼痛・しびれの具体的な内容。音声入力するには右のマイクボタンを押してください"></textarea>
+                <button type="button" class="mic-btn" onclick="startVoice('sf-pain-note',this)"
+                        aria-label="疼痛・しびれの音声入力を開始">🎤</button>
+              </div>
+            </fieldset>
+
             <!-- 見えにくさ（旦専用） -->
             <fieldset style="border:none;padding:0" class="field">
               <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">
@@ -1351,6 +1366,21 @@
                           aria-label="腰痛・股関節痛の内容。音声入力するには右のマイクボタンを押してください"></textarea>
                 <button type="button" class="mic-btn" onclick="startVoice('sf-joint-note',this)"
                         aria-label="腰痛・股関節痛の音声入力を開始">🎤</button>
+              </div>
+            </fieldset>
+
+            <fieldset style="border:none;padding:0" class="field">
+              <legend style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:4px">疼痛・しびれ等のその他訴え</legend>
+              <div class="check-group grp-common">
+                <div class="check-item"><input type="radio" name="sf_s_pain" id="sfsp1" value="なし"><label for="sfsp1">なし</label></div>
+                <div class="check-item"><input type="radio" name="sf_s_pain" id="sfsp2" value="あり"><label for="sfsp2">あり</label></div>
+              </div>
+              <div class="mic-row" style="margin-top:8px">
+                <textarea id="sf-spain-note" name="sf_spain_note" rows="2"
+                          placeholder="具体的な内容（音声または入力）"
+                          aria-label="その他疼痛・しびれの具体的な内容。音声入力するには右のマイクボタンを押してください"></textarea>
+                <button type="button" class="mic-btn" onclick="startVoice('sf-spain-note',this)"
+                        aria-label="その他疼痛・しびれの音声入力を開始">🎤</button>
               </div>
             </fieldset>
 
@@ -2309,12 +2339,14 @@
           ['体調全般',     r.sf_condition],
           ['気分',         r.sf_mood],
           ['食事・水分',   r.sf_food],
+          ['疼痛・しびれ等', r.sf_pain ? r.sf_pain + (r.sf_pain_note ? '：' + r.sf_pain_note : '') : ''],
           ['見えにくさ',   r.sf_vision],
           ['視覚困りごと', r.sf_vision_note],
         ] : [
           ['体調全般（早南江）',    r.sf_s_condition],
           ['動悸・胸部症状',        r.sf_cardiac ? r.sf_cardiac + (r.sf_cardiac_note ? '：' + r.sf_cardiac_note : '') : ''],
           ['腰痛・股関節痛',        r.sf_joint   ? r.sf_joint   + (r.sf_joint_note   ? '：' + r.sf_joint_note   : '') : ''],
+          ['疼痛・しびれ等のその他訴え', r.sf_s_pain ? r.sf_s_pain + (r.sf_spain_note ? '：' + r.sf_spain_note : '') : ''],
           ['食事・水分（早南江）',  r.sf_s_food],
         ]),
         ['体温（参考）',    r.sf_temp  ? r.sf_temp  + ' ℃'    : ''],
@@ -3539,6 +3571,8 @@
         sf_condition:  valOf2('sf_condition'),
         sf_mood:       valOf2('sf_mood'),
         sf_food:       valOf2('sf_food'),
+        sf_pain:       valOf2('sf_pain'),
+        sf_pain_note:  txt('sf-pain-note'),
         sf_vision:     valOf2('sf_vision'),
         sf_vision_note: txt('sf-vision-note'),
         // 早南江の体調
@@ -3547,6 +3581,8 @@
         sf_cardiac_note: txt('sf-cardiac-note'),
         sf_joint:       valOf2('sf_joint'),
         sf_joint_note:  txt('sf-joint-note'),
+        sf_s_pain:      valOf2('sf_s_pain'),
+        sf_spain_note:  txt('sf-spain-note'),
         sf_s_food:      valOf2('sf_s_food'),
         // バイタル自己測定（参考値）
         sf_temp:       txt('sf-temp'),
@@ -3648,6 +3684,8 @@
       setR('sf_condition',  r.sf_condition);
       setR('sf_mood',       r.sf_mood);
       setR('sf_food',       r.sf_food);
+      setR('sf_pain',       r.sf_pain);
+      set('sf-pain-note',   r.sf_pain_note);
       setR('sf_vision',     r.sf_vision);
       set('sf-vision-note', r.sf_vision_note);
       setR('sf_s_condition', r.sf_s_condition);
@@ -3655,6 +3693,8 @@
       set('sf-cardiac-note', r.sf_cardiac_note);
       setR('sf_joint',      r.sf_joint);
       set('sf-joint-note',  r.sf_joint_note);
+      setR('sf_s_pain',     r.sf_s_pain);
+      set('sf-spain-note',  r.sf_spain_note);
       setR('sf_s_food',     r.sf_s_food);
       set('sf-temp',        r.sf_temp);
       set('sf-bph',         r.sf_bph);
@@ -3699,6 +3739,7 @@
           row('体調全般',   r.sf_condition) +
           row('気分',       r.sf_mood) +
           row('食事・水分', r.sf_food) +
+          row('疼痛・しびれ等', r.sf_pain ? r.sf_pain + (r.sf_pain_note ? '：' + r.sf_pain_note : '') : '') +
           row('見えにくさ', r.sf_vision ? r.sf_vision + (r.sf_vision_note ? '：' + r.sf_vision_note : '') : '') +
           '</table></div>';
       } else {
@@ -3708,6 +3749,7 @@
           row('体調全般',       r.sf_s_condition) +
           row('動悸・胸部症状', r.sf_cardiac ? r.sf_cardiac + (r.sf_cardiac_note ? '：' + r.sf_cardiac_note : '') : '') +
           row('腰痛・股関節痛', r.sf_joint ? r.sf_joint + (r.sf_joint_note ? '：' + r.sf_joint_note : '') : '') +
+          row('疼痛・しびれ等のその他訴え', r.sf_s_pain ? r.sf_s_pain + (r.sf_spain_note ? '：' + r.sf_spain_note : '') : '') +
           row('食事・水分',     r.sf_s_food) +
           '</table></div>';
       }

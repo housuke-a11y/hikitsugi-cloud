@@ -1947,8 +1947,7 @@
       announce('印刷ダイアログを開きます。' + (hasPhotos ? '写真を読み込んでいます…' : '') +
         'PDFで保存するとファイル名は' + fileName + 'になります。');
 
-      setTimeout(async () => {
-        await waitForPrintPhotos(8000); // 添付写真の読み込みを待つ（最大8秒）
+      function doPrint() {
         window.print();
         const restore = () => {
           document.title = originalTitle;
@@ -1956,7 +1955,20 @@
         };
         window.addEventListener('afterprint', restore);
         setTimeout(() => { document.title = originalTitle; }, 3000);
-      }, 150);
+      }
+
+      // 写真が無い記録は、これまで通りsetTimeout後に即座にwindow.print()を呼ぶ
+      // （awaitを挟むとiOS Safari等でユーザー操作起点の印刷ダイアログが
+      // 開かなくなることがあるため、写真が無い＝待つ理由が無い場合は
+      // 余計な非同期処理を挟まない）。
+      // 写真がある記録のみ、読み込み完了を待ってから印刷する。
+      if (!hasPhotos) {
+        setTimeout(doPrint, 150);
+      } else {
+        setTimeout(() => {
+          waitForPrintPhotos(8000).then(doPrint); // 添付写真の読み込みを待つ（最大8秒）
+        }, 150);
+      }
     }
 
     /* ─── 設定画面 ─────────────────────────────────── */

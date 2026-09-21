@@ -431,10 +431,37 @@
       .p-vital-row td { width: 25%; }
       .p-okuri-val { min-height: 40pt; white-space: pre-wrap; }
       .p-note { font-size: 8pt; margin-top: 4pt; }
+
+      /* 添付写真：末尾にまとめて配置（3枚まで横並び） */
+      .p-photos { display: flex; flex-wrap: wrap; gap: 6pt; margin-top: 4pt; }
+      .p-photo-item { width: 31%; text-align: center; break-inside: avoid; }
+      .p-photo-item img { width: 100%; height: auto; border: 0.5pt solid #888; display: block; }
+      .p-photo-caption { font-size: 8pt; margin-top: 2pt; white-space: pre-wrap; }
+
       .p-section[data-hidden="true"] { display: none !important; }
     }
 
     #print-area { display: none; }
+
+    /* ─── 写真添付（詳細モーダル・プレビューでの表示） ───────── */
+    .photo-slots { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+    .photo-slot {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--rad-md);
+      background: var(--bg);
+    }
+    .photo-thumb {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 6px;
+      flex-shrink: 0;
+      background: var(--border);
+    }
   </style>
 </head>
 <body>
@@ -1118,11 +1145,25 @@
         el.className = 'prev-box';
         el.innerHTML =
           `<div class="prev-meta">${escHtml(prev.date)}${prev.svcLabel ? '　' + escHtml(prev.svcLabel) : ''}</div>` +
-          `<div class="prev-body">${escHtml(prev.okuri)}</div>`;
+          `<div class="prev-body">${escHtml(prev.okuri)}</div>` +
+          buildPrevPhotosHtml(prev.photos);
       } else {
         el.className = 'alert-none';
         el.textContent = '申し送り事項の記録がありません';
       }
+    }
+
+    // ホーム画面の「前回の申し送り事項」プレビュー用：添付写真の小さなサムネイル行
+    // （写真が無ければ空文字＝何も表示しない）
+    function buildPrevPhotosHtml(photos) {
+      if (!Array.isArray(photos) || photos.length === 0) return '';
+      return '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">' +
+        photos.map((p, i) =>
+          '<img class="photo-thumb" style="cursor:zoom-in" ' +
+            'src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+            'alt="添付写真' + (i + 1) + '枚目" onclick="window.open(this.src, \'_blank\')">'
+        ).join('') +
+        '</div>';
     }
 
     /* ─── ページ切り替え（ホーム／過去ログ／設定） ─────── */
@@ -1380,6 +1421,9 @@
           (isSelf
             ? `<span class="badge badge-self">📌本人・家族申告${r.pinned ? '（ピン留め中）' : ''}</span>`
             : svcBadge(r.svctype)) +
+          (!isSelf && Array.isArray(r.photos) && r.photos.length > 0
+            ? `<span style="font-size:0.8125rem;color:var(--txt-sub)">📷${r.photos.length}枚</span>`
+            : '') +
           `</div>` +
           (isSelf
             ? `<div class="log-staff">${escHtml(selfSubj)}からの申告</div>` +
@@ -1576,13 +1620,31 @@
           `<tr><td class="dt-key">${escHtml(k)}</td>` +
           `<td class="dt-val">${escHtml(v)}</td></tr>`
         ).join('') +
-        `</table>`;
+        `</table>` +
+        buildPhotosHtml(r.photos);
 
       const overlay = document.getElementById('modal-overlay');
       overlay.classList.add('open');
       setTimeout(() => {
         overlay.querySelector('button').focus();
       }, 80);
+    }
+
+    // 詳細モーダル用：添付写真のサムネイル＋説明の一覧HTML（写真が無ければ空文字）
+    function buildPhotosHtml(photos) {
+      if (!Array.isArray(photos) || photos.length === 0) return '';
+      return '<div style="margin-top:14px">' +
+        '<p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:8px">添付写真</p>' +
+        '<div class="photo-slots">' +
+        photos.map((p, i) =>
+          '<div class="photo-slot">' +
+            '<img class="photo-thumb" src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+              'alt="添付写真' + (i + 1) + '枚目" style="cursor:zoom-in" ' +
+              'onclick="window.open(this.src, \'_blank\')">' +
+            '<span style="flex:1;font-size:0.9375rem;white-space:pre-wrap">' + escHtml(p.caption || '') + '</span>' +
+          '</div>'
+        ).join('') +
+        '</div></div>';
     }
 
     function closeModal() {
@@ -1762,9 +1824,42 @@
         escHtml(okuriCombined) + '</td></tr>' +
         '</table></div>';
 
+      html += buildPrintPhotosHtml(r.photos);
+
       html += '<p class="p-note">※ 緊急度の高い内容には「【要確認】」と記入してください。</p>';
 
       return html;
+    }
+
+    // 印刷用：添付写真セクション（写真が無ければ空文字＝出力しない）
+    function buildPrintPhotosHtml(photos) {
+      if (!Array.isArray(photos) || photos.length === 0) return '';
+      return '<div class="p-section">' +
+        secBar('添付写真', 'p-sec-common') +
+        '<div class="p-photos">' +
+        photos.map((p, i) =>
+          '<div class="p-photo-item">' +
+            '<img class="print-photo" data-photo-idx="' + i + '" ' +
+              'src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+              'alt="添付写真' + (i + 1) + '枚目">' +
+            (p.caption ? '<div class="p-photo-caption">' + escHtml(p.caption) + '</div>' : '') +
+          '</div>'
+        ).join('') +
+        '</div></div>';
+    }
+
+    // 印刷エリア内の写真（あれば）がすべて読み込み終わるのを待つ。
+    // 最大8秒待っても終わらない場合は印刷を止めずにそのまま進める。
+    function waitForPrintPhotos(timeoutMs) {
+      const imgs = Array.from(document.querySelectorAll('#print-area .print-photo'));
+      if (imgs.length === 0) return Promise.resolve();
+      const waits = imgs.map(img => new Promise(resolve => {
+        if (img.complete) { resolve(); return; }
+        img.addEventListener('load',  resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      }));
+      const timeout = new Promise(resolve => setTimeout(resolve, timeoutMs));
+      return Promise.race([Promise.all(waits), timeout]);
     }
 
     function buildSelfPrintArea(r) {
@@ -1848,9 +1943,12 @@
 
       const originalTitle = document.title;
       document.title = fileName;
-      announce('印刷ダイアログを開きます。PDFで保存するとファイル名は' + fileName + 'になります。');
+      const hasPhotos = Array.isArray(r.photos) && r.photos.length > 0;
+      announce('印刷ダイアログを開きます。' + (hasPhotos ? '写真を読み込んでいます…' : '') +
+        'PDFで保存するとファイル名は' + fileName + 'になります。');
 
-      setTimeout(() => {
+      setTimeout(async () => {
+        await waitForPrintPhotos(8000); // 添付写真の読み込みを待つ（最大8秒）
         window.print();
         const restore = () => {
           document.title = originalTitle;

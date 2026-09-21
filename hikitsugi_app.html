@@ -271,6 +271,46 @@
     .mic-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
     .mic-btn[data-active="true"] { background: #fff0f0; border-color: var(--danger); }
 
+    /* ─── 写真添付 ───────────────────────────────────── */
+    .photo-field { margin-top: 12px; }
+    .photo-slots { display: flex; flex-direction: column; gap: 10px; margin: 10px 0; }
+    .photo-slot {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      padding: 8px;
+      border: 1px solid var(--border);
+      border-radius: var(--rad-md);
+      background: var(--bg);
+    }
+    .photo-thumb {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 6px;
+      flex-shrink: 0;
+      background: var(--border);
+    }
+    .photo-caption-input {
+      flex: 1;
+      min-height: 40px;
+      font-size: 0.9375rem;
+      padding: 6px 8px;
+    }
+    .photo-remove-btn {
+      min-width: 40px;
+      min-height: 40px;
+      border-radius: var(--rad-md);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--danger);
+      cursor: pointer;
+      flex-shrink: 0;
+      font-size: 1rem;
+    }
+    .photo-remove-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+    #photo-add-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+
     /* ─── ボタン ─────────────────────────────────────── */
     .btn-primary {
       display: block;
@@ -551,6 +591,30 @@
       .p-note {
         font-size: 8pt;
         margin-top: 4pt;
+      }
+
+      /* 添付写真：末尾にまとめて配置（3枚まで横並び） */
+      .p-photos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6pt;
+        margin-top: 4pt;
+      }
+      .p-photo-item {
+        width: 31%;
+        text-align: center;
+        break-inside: avoid;
+      }
+      .p-photo-item img {
+        width: 100%;
+        height: auto;
+        border: 0.5pt solid #888;
+        display: block;
+      }
+      .p-photo-caption {
+        font-size: 8pt;
+        margin-top: 2pt;
+        white-space: pre-wrap;
       }
 
       /* 非表示セクションは印刷しない */
@@ -1189,6 +1253,18 @@
             <button type="button" class="mic-btn"
                     onclick="startVoice('f-okuri', this)"
                     aria-label="申し送り事項の音声入力を開始">🎤</button>
+          </div>
+
+          <div class="photo-field">
+            <label id="photo-label">写真を添付（けがや皮膚の状態、置き場所、たたみ方など。最大3枚）</label>
+            <div id="photo-slots" class="photo-slots" role="list" aria-labelledby="photo-label"></div>
+            <input type="file" id="photo-input" accept="image/*" capture="environment" multiple
+                   style="display:none" onchange="handlePhotoSelect(event)">
+            <button type="button" id="photo-add-btn" class="btn-secondary"
+                    onclick="document.getElementById('photo-input').click()"
+                    aria-label="申し送りに添付する写真を選択します。最大3枚まで">
+              📷 写真を追加（最大3枚）
+            </button>
           </div>
         </div>
 
@@ -2145,6 +2221,19 @@
     }
 
     /* ─── ホーム画面描画 ─────────────────────────── */
+    // ホーム画面の「前回の申し送り事項」プレビュー用：添付写真の小さなサムネイル行
+    // （写真が無ければ空文字＝何も表示しない）
+    function buildPrevPhotosHtml(photos) {
+      if (!Array.isArray(photos) || photos.length === 0) return '';
+      return '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">' +
+        photos.map((p, i) =>
+          '<img class="photo-thumb" style="cursor:zoom-in" ' +
+            'src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+            'alt="添付写真' + (i + 1) + '枚目" onclick="window.open(this.src, \'_blank\')">'
+        ).join('') +
+        '</div>';
+    }
+
     function renderHome() {
       const records = getRecords();
 
@@ -2185,7 +2274,8 @@
           el.className = 'prev-box';
           el.innerHTML =
             `<div class="prev-meta">${escHtml(prev.date)}　${svcBadge(prev.svctype)}</div>` +
-            `<div class="prev-body">${escHtml(combined)}</div>`;
+            `<div class="prev-body">${escHtml(combined)}</div>` +
+            buildPrevPhotosHtml(prev.photos);
         } else {
           el.className = 'alert-none';
           el.textContent = '申し送り事項の記録がありません';
@@ -2280,6 +2370,9 @@
           (isSelf
             ? `<span class="badge badge-self">📌本人・家族申告${r.pinned ? '（ピン留め中）' : ''}</span>`
             : svcBadge(r.svctype)) +
+          (!isSelf && Array.isArray(r.photos) && r.photos.length > 0
+            ? `<span style="font-size:0.8125rem;color:var(--txt-sub)">📷${r.photos.length}枚</span>`
+            : '') +
           `</div>` +
           (isSelf
             ? `<div class="log-staff">${escHtml(selfSubj)}からの申告</div>` +
@@ -2440,7 +2533,8 @@
           `<tr><td class="dt-key">${escHtml(k)}</td>` +
           `<td class="dt-val">${escHtml(v)}</td></tr>`
         ).join('') +
-        `</table>`;
+        `</table>` +
+        buildPhotosHtml(r.photos);
 
       const overlay = document.getElementById('modal-overlay');
       overlay.classList.add('open');
@@ -2448,6 +2542,23 @@
       setTimeout(() => {
         overlay.querySelector('button').focus();
       }, 80);
+    }
+
+    // 詳細モーダル用：添付写真のサムネイル＋説明の一覧HTML（写真が無ければ空文字）
+    function buildPhotosHtml(photos) {
+      if (!Array.isArray(photos) || photos.length === 0) return '';
+      return '<div style="margin-top:14px">' +
+        '<p style="font-size:0.875rem;color:var(--txt-sub);margin-bottom:8px">添付写真</p>' +
+        '<div class="photo-slots">' +
+        photos.map((p, i) =>
+          '<div class="photo-slot">' +
+            '<img class="photo-thumb" src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+              'alt="添付写真' + (i + 1) + '枚目" style="cursor:zoom-in" ' +
+              'onclick="window.open(this.src, \'_blank\')">' +
+            '<span style="flex:1;font-size:0.9375rem;white-space:pre-wrap">' + escHtml(p.caption || '') + '</span>' +
+          '</div>'
+        ).join('') +
+        '</div></div>';
     }
 
     function closeModal() {
@@ -2650,10 +2761,47 @@
         escHtml(okuriCombined) + '</td></tr>' +
         '</table></div>';
 
+      /* ── 添付写真（末尾にまとめて配置） ── */
+      html += buildPrintPhotosHtml(r.photos);
+
       /* ── 欄外注記 ── */
       html += '<p class="p-note">※ 緊急度の高い内容には「【要確認】」と記入してください。</p>';
 
       return html;
+    }
+
+    // 印刷用：添付写真セクション（写真が無ければ空文字＝出力しない）
+    function buildPrintPhotosHtml(photos) {
+      if (!Array.isArray(photos) || photos.length === 0) return '';
+      return '<div class="p-section">' +
+        secBar('添付写真', 'p-sec-common') +
+        '<div class="p-photos">' +
+        photos.map((p, i) =>
+          '<div class="p-photo-item">' +
+            '<img class="print-photo" data-photo-idx="' + i + '" ' +
+              'src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+              'alt="添付写真' + (i + 1) + '枚目">' +
+            (p.caption ? '<div class="p-photo-caption">' + escHtml(p.caption) + '</div>' : '') +
+          '</div>'
+        ).join('') +
+        '</div></div>';
+    }
+
+    // 印刷エリア内の写真（あれば）がすべて読み込み終わるのを待つ。
+    // GAS経由（?action=photo）の画像取得はネットワーク越しのため、
+    // 読み込み前にwindow.print()を呼ぶと空欄で印刷されてしまう。
+    // 一定時間で読み込みが終わらない場合は、印刷を止めずにそのまま進める
+    // （回線不調等で写真が出ないことはあっても、記録本文の印刷は優先する）。
+    function waitForPrintPhotos(timeoutMs) {
+      const imgs = Array.from(document.querySelectorAll('#print-area .print-photo'));
+      if (imgs.length === 0) return Promise.resolve();
+      const waits = imgs.map(img => new Promise(resolve => {
+        if (img.complete) { resolve(); return; }
+        img.addEventListener('load',  resolve, { once: true });
+        img.addEventListener('error', resolve, { once: true });
+      }));
+      const timeout = new Promise(resolve => setTimeout(resolve, timeoutMs));
+      return Promise.race([Promise.all(waits), timeout]);
     }
 
     function printRecord() {
@@ -2676,9 +2824,12 @@
 
       const originalTitle = document.title;
       document.title = fileName;
-      announce('印刷ダイアログを開きます。PDFで保存するとファイル名は' + fileName + 'になります。');
+      const hasPhotos = Array.isArray(r.photos) && r.photos.length > 0;
+      announce('印刷ダイアログを開きます。' + (hasPhotos ? '写真を読み込んでいます…' : '') +
+        'PDFで保存するとファイル名は' + fileName + 'になります。');
 
-      setTimeout(() => {
+      setTimeout(async () => {
+        await waitForPrintPhotos(8000); // 添付写真の読み込みを待つ（最大8秒）
         window.print();
         const restore = () => {
           document.title = originalTitle;
@@ -2687,6 +2838,114 @@
         window.addEventListener('afterprint', restore);
         setTimeout(() => { document.title = originalTitle; }, 3000);
       }, 150);
+    }
+
+    /* ─── 写真添付 ───────────────────────────────────
+     * currentPhotos の各要素：
+     *   新規添付（この端末で選択・未送信）: { dataUrl, mimeType, name, caption }
+     *   既存添付（編集時にクラウドから読み込み済み）: { id, name, caption }
+     * 送信時（saveRecord）にこの形のまま、または{id,...}のみに整形してrec.photosへ。
+     * GAS側（savePhotos）がdata付きは新規保存、idのみは既存維持として扱う。
+     */
+    const MAX_PHOTOS = 3;
+    let currentPhotos = [];
+
+    // 既存添付（id）は doGet ?action=photo&id=... から、新規添付（dataUrl）は
+    // ブラウザ内で作った data URL をそのままサムネイルに使う。
+    function photoSrc(p) {
+      return p.dataUrl || (CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id));
+    }
+
+    async function handlePhotoSelect(event) {
+      const files = Array.from(event.target.files || []);
+      event.target.value = ''; // 同じファイルを連続で選び直せるようにリセット
+      for (const file of files) {
+        if (currentPhotos.length >= MAX_PHOTOS) {
+          announce('写真は最大' + MAX_PHOTOS + '枚までです。');
+          break;
+        }
+        if (!file.type || !file.type.startsWith('image/')) continue;
+        try {
+          const resized = await resizeImageFile(file);
+          currentPhotos.push({ dataUrl: resized.dataUrl, mimeType: resized.mimeType, name: file.name || 'photo.jpg', caption: '' });
+        } catch (err) {
+          announce('写真の読み込みに失敗しました。');
+        }
+      }
+      renderPhotoSlots();
+    }
+
+    // 送信データ量・印刷時の見やすさのバランスを取るため、長辺2000px・JPEG品質80%に
+    // リサイズ・再圧縮してからdata URL化する（スマホ撮影そのままだと数MB〜十数MBになるため）。
+    function resizeImageFile(file) {
+      const MAX_EDGE = 2000;
+      const QUALITY  = 0.8;
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error || new Error('読み込みエラー'));
+        reader.onload = () => {
+          const img = new Image();
+          img.onerror = () => reject(new Error('画像の読み込みに失敗しました'));
+          img.onload = () => {
+            let width = img.naturalWidth, height = img.naturalHeight;
+            if (width > MAX_EDGE || height > MAX_EDGE) {
+              const scale = MAX_EDGE / Math.max(width, height);
+              width  = Math.round(width * scale);
+              height = Math.round(height * scale);
+            }
+            const canvas = document.createElement('canvas');
+            canvas.width  = width;
+            canvas.height = height;
+            canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+            resolve({ dataUrl: canvas.toDataURL('image/jpeg', QUALITY), mimeType: 'image/jpeg' });
+          };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
+      });
+    }
+
+    function renderPhotoSlots() {
+      const wrap = document.getElementById('photo-slots');
+      if (!wrap) return;
+      wrap.innerHTML = currentPhotos.map((p, i) =>
+        '<div class="photo-slot" role="listitem">' +
+          '<img class="photo-thumb" src="' + escAttr(photoSrc(p)) + '" alt="添付写真' + (i + 1) + '枚目のプレビュー">' +
+          '<input type="text" class="photo-caption-input" placeholder="説明（任意。例：①ズボンは3つ折り）" ' +
+            'aria-label="' + (i + 1) + '枚目の写真の説明" value="' + escAttr(p.caption || '') + '" ' +
+            'oninput="updatePhotoCaption(' + i + ', this.value)">' +
+          '<button type="button" class="photo-remove-btn" onclick="removePhoto(' + i + ')" ' +
+            'aria-label="' + (i + 1) + '枚目の写真を削除">✕</button>' +
+        '</div>'
+      ).join('');
+
+      const addBtn = document.getElementById('photo-add-btn');
+      if (addBtn) {
+        const reached = currentPhotos.length >= MAX_PHOTOS;
+        addBtn.disabled = reached;
+        addBtn.textContent = reached
+          ? '📷 写真は最大' + MAX_PHOTOS + '枚までです'
+          : '📷 写真を追加（最大' + MAX_PHOTOS + '枚）';
+      }
+    }
+
+    function updatePhotoCaption(idx, val) {
+      if (currentPhotos[idx]) currentPhotos[idx].caption = val;
+    }
+
+    function removePhoto(idx) {
+      currentPhotos.splice(idx, 1);
+      renderPhotoSlots();
+    }
+
+    // rec.photos（GASへ送信する形）を組み立てる。
+    // 新規添付（dataUrlあり）は{data, name, caption}、既存添付（idのみ）は{id, name, caption}のまま。
+    function buildPhotosPayload() {
+      return currentPhotos.map(p =>
+        p.id
+          ? { id: p.id, name: p.name || '', caption: p.caption || '' }
+          : { data: p.dataUrl, name: p.name || '', caption: p.caption || '' }
+      );
     }
 
     /* ─── 編集モード状態 ──────────────────────────── */
@@ -2828,6 +3087,12 @@
       // 申し送り
       document.getElementById('f-okuri').value = r.okuri || '';
 
+      // 添付写真（既存分。id・name・captionのみ保持し、dataUrlは持たせない＝再送信しない）
+      currentPhotos = Array.isArray(r.photos)
+        ? r.photos.map(p => ({ id: p.id, name: p.name || '', caption: p.caption || '' }))
+        : [];
+      renderPhotoSlots();
+
       // 早南江専用フィールド
       setRadio('s_condition',  r.s_condition);
       setRadio('s_mood',       r.s_mood);
@@ -2947,6 +3212,7 @@
         rx:        valOf(form, 'rx'),
         rx_note:   document.getElementById('f-rx-note').value.trim(),
         okuri:     document.getElementById('f-okuri').value.trim(),
+        photos:    buildPhotosPayload(),
       };
 
       // V2: 過去ログはクラウドが唯一の情報源のため、端末には記録を永続保存しない
@@ -3445,6 +3711,8 @@
       updateStaffSelect('');  // 担当者セレクトをリセット
       updateSubject();        // 対象者リセット（旦に戻す）とフォーム表示の初期化
       updateDoneChecks();     // チェック項目のリセットとセクション表示の初期化を兼ねる
+      currentPhotos = [];     // 添付写真をリセット
+      renderPhotoSlots();
       announce('フォームをクリアしました。サービス種別を選択すると関係のない入力欄が非表示になります。');
     }
 

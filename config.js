@@ -157,14 +157,24 @@ function getUnsentQueue() {
   return kept;
 }
 
+// 戻り値：保存できたかどうか（true/false）。
+// 【写真添付機能】添付写真（base64）が乗ることでpayloadが数MBになり得るため、
+// localStorageの容量上限（QuotaExceededError）で保存に失敗するケースが
+// 出てくる。呼び出し元（submitToCloud）はこの戻り値を見て、キューにも
+// 積めなかった＝この端末のどこにも残っていないことを利用者に伝える。
 function saveUnsentQueue(list) {
-  try { localStorage.setItem(UNSENT_KEY, JSON.stringify(list)); } catch (e) {}
+  try {
+    localStorage.setItem(UNSENT_KEY, JSON.stringify(list));
+    return true;
+  } catch (e) {
+    return false;
+  }
 }
 
 function addUnsentItem(payload, label) {
   const list = getUnsentQueue();
   list.push({ queuedAt: Date.now(), label: label || '', payload: payload });
-  saveUnsentQueue(list);
+  return saveUnsentQueue(list);
 }
 
 function removeUnsentItem(queuedAt) {
@@ -255,10 +265,20 @@ async function submitToCloud(payload, label) {
     if (result && result.ok) return { sent: true, message: '' };
     throw new Error((result && result.error) || '送信に失敗しました');
   } catch (e) {
-    addUnsentItem(payload, label || '');
+    const queued = addUnsentItem(payload, label || '');
+    if (queued) {
+      return {
+        sent: false,
+        message: 'クラウドへの送信に失敗したため、この端末に一時保存しました。ホーム画面から再送信してください。'
+      };
+    }
+    // 【写真添付機能】未送信キューへの一時保存自体に失敗した場合
+    // （主に添付写真でlocalStorageの容量上限を超えた場合）は、
+    // この端末のどこにも記録が残っていない＝再送信もできないことを
+    // はっきり伝える（黙って消えたと誤解されないように）。
     return {
       sent: false,
-      message: 'クラウドへの送信に失敗したため、この端末に一時保存しました。ホーム画面から再送信してください。'
+      message: 'クラウドへの送信に失敗し、この端末への一時保存もできませんでした（写真データが大きい可能性があります）。この画面を閉じずに、電波の良い場所でもう一度保存し直してください。'
     };
   }
 }

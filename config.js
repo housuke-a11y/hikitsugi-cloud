@@ -214,13 +214,20 @@ async function resendUnsentQueue() {
  * 同一URL（?action=xxx）へのGETはブラウザ（特にiOS Safari）や経路上の
  * プロキシにキャッシュされ、再編集直後でも古いレスポンスが返り続けることが
  * ある（例：ピン留めを解除して保存しても、ホーム画面に古い状態が
- * 残り続けて見える）。呼び出しのたびに変わるクエリパラメータを付与し、
- * fetch()にも cache: 'no-store' を指定することで、常に最新のレスポンスを
- * 取得する。
+ * 残り続けて見える）。呼び出しのたびに変わるクエリパラメータを付与することで
+ * URL自体を毎回ユニークにし、キャッシュを回避する。
+ *
+ * 【注意】以前はここに fetch() の cache: 'no-store' オプションも
+ * 指定していたが、GAS WebApp（script.google.com/macros/s/…/exec）は
+ * 実体のscript.googleusercontent.comへ302リダイレクトする構成になっており、
+ * この組み合わせで「クラウドからのデータ取得に失敗しました」（fetch自体が
+ * 失敗）という重大な回帰を引き起こした（2026-09-22に発生・即日revert）。
+ * クエリパラメータによるURLのユニーク化だけで目的（キャッシュ回避）は
+ * 達成できるため、cacheオプションは指定しないこと。
  */
 async function fetchGas(action) {
   const url = CONFIG.GAS_URL + '?action=' + encodeURIComponent(action) + '&_=' + Date.now();
-  const res = await fetch(url, { cache: 'no-store' });
+  const res = await fetch(url);
   if (!res.ok) throw new Error('HTTP ' + res.status);
   return res.json();
 }

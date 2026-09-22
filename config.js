@@ -209,6 +209,22 @@ async function resendUnsentQueue() {
   return { successCount, failCount };
 }
 
+/* ─── GAS WebAppへのGET呼び出し（共通・キャッシュ回避） ───────────────
+ * V2データ一元管理方針は「取得のたびに最新データをフェッチする」だが、
+ * 同一URL（?action=xxx）へのGETはブラウザ（特にiOS Safari）や経路上の
+ * プロキシにキャッシュされ、再編集直後でも古いレスポンスが返り続けることが
+ * ある（例：ピン留めを解除して保存しても、ホーム画面に古い状態が
+ * 残り続けて見える）。呼び出しのたびに変わるクエリパラメータを付与し、
+ * fetch()にも cache: 'no-store' を指定することで、常に最新のレスポンスを
+ * 取得する。
+ */
+async function fetchGas(action) {
+  const url = CONFIG.GAS_URL + '?action=' + encodeURIComponent(action) + '&_=' + Date.now();
+  const res = await fetch(url, { cache: 'no-store' });
+  if (!res.ok) throw new Error('HTTP ' + res.status);
+  return res.json();
+}
+
 /* ─── クラウド設定データ（スケジュール・事業所・担当者） ─────────
  * V2データ一元管理方針：取得のたびに最新データをフェッチする
  * （明示的な更新ボタンを設けない代わりに、参照のたびに再取得する設計）。
@@ -218,9 +234,7 @@ async function resendUnsentQueue() {
 async function fetchCloudSettings() {
   if (!CONFIG.GAS_URL) return null;
   try {
-    const res = await fetch(CONFIG.GAS_URL + '?action=settings');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
+    return await fetchGas('settings');
   } catch (e) {
     return null;
   }
@@ -240,9 +254,7 @@ async function saveCloudSetting(key, value) {
 async function fetchCloudLog() {
   if (!CONFIG.GAS_URL) return null;
   try {
-    const res = await fetch(CONFIG.GAS_URL + '?action=log');
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const data = await res.json();
+    const data = await fetchGas('log');
     return Array.isArray(data.records) ? data.records : null;
   } catch (e) {
     return null;

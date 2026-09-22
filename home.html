@@ -1083,9 +1083,7 @@
       }
 
       try {
-        const res = await fetch(CONFIG.GAS_URL + '?action=home');
-        if (!res.ok) throw new Error('HTTP ' + res.status);
-        const data = await res.json();
+        const data = await fetchGas('home'); // config.js：キャッシュを回避して常に最新を取得
         renderHome(data);
       } catch (e) {
         showCloudStatus('クラウドからのデータ取得に失敗しました。通信環境をご確認のうえ、画面を再読み込みしてください。');

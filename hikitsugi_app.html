@@ -2240,7 +2240,8 @@
       return '<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">' +
         photos.map((p, i) =>
           '<img class="photo-thumb" style="cursor:zoom-in" ' +
-            'src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+            'src="' + escAttr(photoUrl(p.id)) + '" data-photo-id="' + escAttr(p.id) + '" ' +
+            'onerror="loadPhotoFallback(this)" ' +
             'alt="添付写真' + (i + 1) + '枚目" onclick="window.open(this.src, \'_blank\')">'
         ).join('') +
         '</div>';
@@ -2578,7 +2579,8 @@
         '<div class="photo-slots">' +
         photos.map((p, i) =>
           '<div class="photo-slot">' +
-            '<img class="photo-thumb" src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+            '<img class="photo-thumb" src="' + escAttr(photoUrl(p.id)) + '" ' +
+              'data-photo-id="' + escAttr(p.id) + '" onerror="loadPhotoFallback(this)" ' +
               'alt="添付写真' + (i + 1) + '枚目" style="cursor:zoom-in" ' +
               'onclick="window.open(this.src, \'_blank\')">' +
             '<span style="flex:1;font-size:0.9375rem;white-space:pre-wrap">' + escHtml(p.caption || '') + '</span>' +
@@ -2805,7 +2807,8 @@
         photos.map((p, i) =>
           '<div class="p-photo-item">' +
             '<img class="print-photo" data-photo-idx="' + i + '" ' +
-              'src="' + escAttr(CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id)) + '" ' +
+              'src="' + escAttr(photoUrl(p.id)) + '" data-photo-id="' + escAttr(p.id) + '" ' +
+              'onerror="loadPhotoFallback(this)" ' +
               'alt="添付写真' + (i + 1) + '枚目">' +
             (p.caption ? '<div class="p-photo-caption">' + escHtml(p.caption) + '</div>' : '') +
           '</div>'
@@ -2822,9 +2825,11 @@
       const imgs = Array.from(document.querySelectorAll('#print-area .print-photo'));
       if (imgs.length === 0) return Promise.resolve();
       const waits = imgs.map(img => new Promise(resolve => {
-        if (img.complete) { resolve(); return; }
-        img.addEventListener('load',  resolve, { once: true });
-        img.addEventListener('error', resolve, { once: true });
+        if (img.complete && img.naturalWidth > 0) { resolve(); return; }
+        img.addEventListener('load', resolve, { once: true });
+        // 読み込み失敗時はbase64での取り直し（config.jsのloadPhotoFallback）が走るため、
+        // すぐに諦めずに取り直し後のloadを待つ（全体はtimeoutMsで打ち切る）。
+        img.addEventListener('error', () => setTimeout(resolve, 5000), { once: true });
       }));
       const timeout = new Promise(resolve => setTimeout(resolve, timeoutMs));
       return Promise.race([Promise.all(waits), timeout]);
@@ -2891,7 +2896,7 @@
     // 既存添付（id）は doGet ?action=photo&id=... から、新規添付（dataUrl）は
     // ブラウザ内で作った data URL をそのままサムネイルに使う。
     function photoSrc(p) {
-      return p.dataUrl || (CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(p.id));
+      return p.dataUrl || photoUrl(p.id); // photoUrlはconfig.jsの共通関数
     }
 
     async function handlePhotoSelect(event) {
@@ -2948,7 +2953,9 @@
       if (!wrap) return;
       wrap.innerHTML = currentPhotos.map((p, i) =>
         '<div class="photo-slot" role="listitem">' +
-          '<img class="photo-thumb" src="' + escAttr(photoSrc(p)) + '" alt="添付写真' + (i + 1) + '枚目のプレビュー">' +
+          '<img class="photo-thumb" src="' + escAttr(photoSrc(p)) + '" ' +
+            (p.id ? 'data-photo-id="' + escAttr(p.id) + '" onerror="loadPhotoFallback(this)" ' : '') +
+            'alt="添付写真' + (i + 1) + '枚目のプレビュー">' +
           '<input type="text" class="photo-caption-input" placeholder="説明（任意。例：①ズボンは3つ折り）" ' +
             'aria-label="' + (i + 1) + '枚目の写真の説明" value="' + escAttr(p.caption || '') + '" ' +
             'oninput="updatePhotoCaption(' + i + ', this.value)">' +

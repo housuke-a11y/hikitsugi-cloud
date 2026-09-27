@@ -268,6 +268,36 @@ async function fetchCloudLog() {
   }
 }
 
+/* ─── 添付写真の表示（共通） ───────────────────────────────────
+ * 写真はGAS経由（?action=photo&id=…）で配信する。ただしGASのURLは実体の
+ * ドメインへリダイレクトされ、応答が「ダウンロード用ファイル」として返るため、
+ * ブラウザによっては<img>として描画されないことがある（2026-09-27、
+ * ヘルパーさんのiOS Chromeで「説明文だけ表示され写真が出ない」症状が発生）。
+ *
+ * そこで、画像の読み込みに失敗したときだけ ?as=base64 で取り直し、
+ * data URLとして表示し直す。今写真が正しく表示できている環境（オーナーの端末・
+ * PC等）の挙動は一切変わらないため、副作用なく対応できる。
+ * 写真の<img>には data-photo-id と onerror="loadPhotoFallback(this)" を付ける。
+ */
+function photoUrl(id) {
+  return CONFIG.GAS_URL + '?action=photo&id=' + encodeURIComponent(id);
+}
+
+async function loadPhotoFallback(img) {
+  if (!img || img.dataset.photoFallbackTried) return; // 無限ループ防止（1回だけ試す）
+  img.dataset.photoFallbackTried = '1';
+  const id = img.dataset.photoId;
+  if (!id || !CONFIG.GAS_URL) return;
+  try {
+    const res = await fetch(photoUrl(id) + '&as=base64&_=' + Date.now());
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data && data.ok && data.dataUrl) img.src = data.dataUrl;
+  } catch (e) {
+    // 取得できなければ画像は表示されないままにする（説明文・記録本文の表示は妨げない）
+  }
+}
+
 /* ─── クラウド（GAS）への送信共通処理 ─────────────────────────
  * home.html（削除）・hikitsugi_app.html（新規保存・編集）の両方から使う。
  * GAS_URL未設定時：クラウド未接続として何もせず終了。

@@ -1137,13 +1137,21 @@
       }
     }
 
+    /* 直近の訪問の申し送りを表示する。
+     * 申し送り欄が空欄の記録でも「直近の訪問」として表示し、本文の代わりに
+     * 「申し送りはありません」と明示する（空欄の記録を飛ばして数日前の記録を
+     * 表示すると、最新の訪問が分からなくなるため）。写真だけが添付されている
+     * 記録もこの形で表示される。 */
     function fillOkuri(elId, prev) {
       const el = document.getElementById(elId);
-      if (prev && prev.okuri) {
+      if (prev) {
         el.className = 'prev-box';
+        const body = (prev.okuri || '').trim()
+          ? `<div class="prev-body">${escHtml(prev.okuri)}</div>`
+          : `<div class="prev-body" style="color:var(--txt-sub);font-style:italic">申し送りはありません</div>`;
         el.innerHTML =
           `<div class="prev-meta">${escHtml(prev.date)}${prev.svcLabel ? '　' + escHtml(prev.svcLabel) : ''}</div>` +
-          `<div class="prev-body">${escHtml(prev.okuri)}</div>` +
+          body +
           buildPrevPhotosHtml(prev.photos);
       } else {
         el.className = 'alert-none';

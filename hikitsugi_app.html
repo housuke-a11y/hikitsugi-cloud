@@ -2290,11 +2290,16 @@
         const undoneText = prev ? (prev.undone || '').trim() : '';
         const combined = [okuriText, undoneText ? '【未実施】' + undoneText : '']
                            .filter(Boolean).join('\n\n');
-        if (prev && combined) {
+        // 申し送りが空欄の記録でも「直近の訪問」として表示し、本文の代わりに
+        // 「申し送りはありません」と明示する（GAS側のgetLastOkuriと同じ方針）。
+        if (prev) {
           el.className = 'prev-box';
+          const body = combined
+            ? `<div class="prev-body">${escHtml(combined)}</div>`
+            : `<div class="prev-body" style="color:var(--txt-sub);font-style:italic">申し送りはありません</div>`;
           el.innerHTML =
             `<div class="prev-meta">${escHtml(prev.date)}　${svcBadge(prev.svctype)}</div>` +
-            `<div class="prev-body">${escHtml(combined)}</div>` +
+            body +
             buildPrevPhotosHtml(prev.photos);
         } else {
           el.className = 'alert-none';

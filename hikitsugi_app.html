@@ -2207,6 +2207,18 @@
         .join('／');
     }
 
+    /* 訪問日時（date＋start）の比較用キー。'2026-09-26 14:30' のような文字列を返す。
+     * 過去ログの並べ替え・ホーム画面の「前回の申し送り事項」の判定は、アプリに
+     * 入力された時刻（savedAt）ではなく訪問日時を基準にする（書き忘れた過去分を
+     * 後から入力しても並び順が狂わないようにするため）。startは「9:05」のように
+     * 時が1桁で入っていることがあり、そのまま文字列比較すると「9:05 > 10:30」と
+     * 誤判定するので2桁に揃える。GAS側のvisitSortKeyと同じ基準。 */
+    function visitSortKey(r) {
+      const m = /^(\d{1,2}):(\d{2})/.exec(String(r.start == null ? '' : r.start));
+      const time = m ? (m[1].length === 1 ? '0' + m[1] : m[1]) + ':' + m[2] : '00:00';
+      return String(r.date || '') + ' ' + time;
+    }
+
     function svcBadge(svctype) {
       const svcs = normalizeSvc(svctype);
       if (svcs.length === 0) return '<span class="badge badge-helper">種別不明</span>';
@@ -2259,14 +2271,7 @@
 
       /* 対象者ごとに最新記録を取得（本人申告を除く）
        * GAS側のgetLastOkuriと同じ基準：入力された順ではなく訪問日時（date＋start）の
-       * 新しい順で選ぶ（後追い入力した過去分が最新扱いになるのを防ぐため）。
-       * startは「9:05」のように時が1桁の場合があるので2桁に揃えてから比較する。 */
-      function visitSortKey(r) {
-        const m = /^(\d{1,2}):(\d{2})/.exec(String(r.start == null ? '' : r.start));
-        const time = m ? (m[1].length === 1 ? '0' + m[1] : m[1]) + ':' + m[2] : '00:00';
-        return String(r.date || '') + ' ' + time;
-      }
-
+       * 新しい順で選ぶ（後追い入力した過去分が最新扱いになるのを防ぐため）。 */
       function lastOf(subj) {
         const filtered = records.filter(r => !r.is_self_report && (r.subject || '旦') === subj);
         if (filtered.length === 0) return null;
@@ -2348,7 +2353,14 @@
         });
       }
 
+      // 訪問日時（date＋start）順に並べる。同一訪問日時の場合のみ入力時刻（savedAt）で決める。
       records.sort((a, b) => {
+        const ka = visitSortKey(a);
+        const kb = visitSortKey(b);
+        if (ka !== kb) {
+          if (sort === 'new') return ka < kb ? 1 : -1;
+          return ka < kb ? -1 : 1;
+        }
         const da = a.savedAt || 0;
         const db = b.savedAt || 0;
         return sort === 'new' ? db - da : da - db;

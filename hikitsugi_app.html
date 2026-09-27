@@ -2257,10 +2257,24 @@
         pinnedSec.style.display = 'none';
       }
 
-      /* 対象者ごとに最新記録を取得（本人申告を除く） */
+      /* 対象者ごとに最新記録を取得（本人申告を除く）
+       * GAS側のgetLastOkuriと同じ基準：入力された順ではなく訪問日時（date＋start）の
+       * 新しい順で選ぶ（後追い入力した過去分が最新扱いになるのを防ぐため）。
+       * startは「9:05」のように時が1桁の場合があるので2桁に揃えてから比較する。 */
+      function visitSortKey(r) {
+        const m = /^(\d{1,2}):(\d{2})/.exec(String(r.start == null ? '' : r.start));
+        const time = m ? (m[1].length === 1 ? '0' + m[1] : m[1]) + ':' + m[2] : '00:00';
+        return String(r.date || '') + ' ' + time;
+      }
+
       function lastOf(subj) {
         const filtered = records.filter(r => !r.is_self_report && (r.subject || '旦') === subj);
-        return filtered.length > 0 ? filtered[filtered.length - 1] : null;
+        if (filtered.length === 0) return null;
+        return filtered.slice().sort((a, b) => {
+          const ka = visitSortKey(a), kb = visitSortKey(b);
+          if (ka !== kb) return ka < kb ? 1 : -1;
+          return (b.savedAt || 0) - (a.savedAt || 0);
+        })[0];
       }
 
       function fillOkuri(elId, prev) {

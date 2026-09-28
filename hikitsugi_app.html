@@ -460,6 +460,41 @@
       padding: 16px;
     }
 
+    /* ─── 添付写真の拡大表示 ───────────────────────────────
+     * 写真のタップで別タブを開く（window.open）方式はやめ、アプリ内で拡大する。
+     * GASのURLを直接開くとGAS側が「サポートされている戻り値の型ではありません」
+     * というエラーを返すことがあり、またbase64で取り直した画像（data URL）は
+     * ブラウザが別タブで開くことを禁止しているため。 */
+    #photo-viewer {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.85);
+      z-index: 200;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 16px;
+      padding-top: calc(16px + env(safe-area-inset-top));
+      padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    }
+    #photo-viewer.open { display: flex; }
+    #photo-viewer img {
+      max-width: 100%;
+      max-height: 78vh;
+      object-fit: contain;
+      background: #fff;
+      border-radius: var(--rad-md);
+    }
+    #photo-viewer-caption {
+      color: #fff;
+      font-size: 0.9375rem;
+      text-align: center;
+      white-space: pre-wrap;
+      max-width: 600px;
+    }
+
     /* ─── ライブリージョン（スクリーンリーダー通知） ─────── */
     #live-region {
       position: absolute;
@@ -1820,6 +1855,15 @@
     </div>
   </div>
 
+  <!-- ===== 添付写真の拡大表示 ===== -->
+  <div id="photo-viewer" role="dialog" aria-modal="true" aria-label="添付写真の拡大表示">
+    <img id="photo-viewer-img" alt="添付写真の拡大表示">
+    <p id="photo-viewer-caption"></p>
+    <button id="photo-viewer-close" class="btn-secondary"
+            onclick="closePhotoViewer()"
+            aria-label="写真の拡大表示を閉じます">閉じる</button>
+  </div>
+
   <!-- ===== エクスポートモーダル（iOS Safari対応） ===== -->
   <div id="export-modal" role="dialog" aria-modal="true"
        aria-labelledby="export-modal-title"
@@ -2233,6 +2277,67 @@
     }
 
     /* ─── ホーム画面描画 ─────────────────────────── */
+    /* ─── 添付写真の拡大表示 ───────────────────────────────
+     * サムネイルのタップで、別タブを開かずにアプリ内で拡大表示する。
+     * 以前は window.open(this.src) で別タブに開いていたが、
+     * ・GASのURLを直接開くと「サポートされている戻り値の型ではありませんでした」
+     * 　というエラーになる（2026-09-28にiOS Chromeで発生）
+     * ・読み込み失敗時のフォールバックで差し替わる data URL は、
+     * 　ブラウザが別タブで開くことを禁止している
+     * という2つの理由から、アプリ内表示に変更した。
+     * 表示元はサムネイルが実際に表示できている画像（currentSrc）をそのまま使うので、
+     * 拡大表示のために改めて通信する必要がない。 */
+    let photoViewerOpener = null; // 閉じたときにフォーカスを戻す先
+
+    function openPhotoViewer(imgEl) {
+      const viewer  = document.getElementById('photo-viewer');
+      const target  = document.getElementById('photo-viewer-img');
+      const caption = document.getElementById('photo-viewer-caption');
+      if (!viewer || !target || !imgEl) return;
+
+      photoViewerOpener = imgEl;
+      // 読み込み済みの画像をそのまま使う。まだ読めていない場合はフォールバックに任せる。
+      target.removeAttribute('data-photo-fallback-tried');
+      target.dataset.photoId = imgEl.dataset.photoId || '';
+      target.src = imgEl.currentSrc || imgEl.src;
+      target.alt = (imgEl.alt || '添付写真') + 'の拡大表示';
+
+      const text = imgEl.dataset.photoCaption || '';
+      caption.textContent = text;
+      caption.style.display = text ? '' : 'none';
+
+      viewer.classList.add('open');
+      const closeBtn = document.getElementById('photo-viewer-close');
+      if (closeBtn) setTimeout(() => closeBtn.focus(), 80);
+      announce('写真を拡大表示しました。' + (text ? '説明：' + text + '。' : '') + '閉じるボタンで元の画面に戻ります。');
+    }
+
+    function closePhotoViewer() {
+      const viewer = document.getElementById('photo-viewer');
+      if (!viewer) return;
+      viewer.classList.remove('open');
+      document.getElementById('photo-viewer-img').src = '';
+      if (photoViewerOpener) {
+        const back = photoViewerOpener;
+        photoViewerOpener = null;
+        setTimeout(() => { try { back.focus(); } catch (e) {} }, 60);
+      }
+    }
+
+    function isPhotoViewerOpen() {
+      const viewer = document.getElementById('photo-viewer');
+      return !!(viewer && viewer.classList.contains('open'));
+    }
+
+    // サムネイルはimg要素なのでキーボードでは操作できない。role="button" tabindex="0"
+    // を付けたうえで、EnterキーとスペースキーでもタップImageと同じ動作にする。
+    function onPhotoThumbKeydown(e, imgEl) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openPhotoViewer(imgEl);
+      }
+    }
+
     // ホーム画面の「前回の申し送り事項」プレビュー用：添付写真の小さなサムネイル行
     // （写真が無ければ空文字＝何も表示しない）
     function buildPrevPhotosHtml(photos) {
@@ -2242,7 +2347,10 @@
           '<img class="photo-thumb" style="cursor:zoom-in" ' +
             'src="' + escAttr(photoUrl(p.id)) + '" data-photo-id="' + escAttr(p.id) + '" ' +
             'onerror="loadPhotoFallback(this)" ' +
-            'alt="添付写真' + (i + 1) + '枚目" onclick="window.open(this.src, \'_blank\')">'
+            'data-photo-caption="' + escAttr(p.caption || '') + '" ' +
+            'role="button" tabindex="0" onclick="openPhotoViewer(this)" ' +
+            'onkeydown="onPhotoThumbKeydown(event, this)" ' +
+            'alt="添付写真' + (i + 1) + '枚目。拡大表示するには選択してください">'
         ).join('') +
         '</div>';
     }
@@ -2586,8 +2694,10 @@
           '<div class="photo-slot">' +
             '<img class="photo-thumb" src="' + escAttr(photoUrl(p.id)) + '" ' +
               'data-photo-id="' + escAttr(p.id) + '" onerror="loadPhotoFallback(this)" ' +
-              'alt="添付写真' + (i + 1) + '枚目" style="cursor:zoom-in" ' +
-              'onclick="window.open(this.src, \'_blank\')">' +
+              'data-photo-caption="' + escAttr(p.caption || '') + '" ' +
+              'alt="添付写真' + (i + 1) + '枚目。拡大表示するには選択してください" style="cursor:zoom-in" ' +
+              'role="button" tabindex="0" onclick="openPhotoViewer(this)" ' +
+              'onkeydown="onPhotoThumbKeydown(event, this)">' +
             '<span style="flex:1;font-size:0.9375rem;white-space:pre-wrap">' + escHtml(p.caption || '') + '</span>' +
           '</div>'
         ).join('') +
@@ -4668,7 +4778,10 @@
         const exportModal = document.getElementById('export-modal');
         const importModal = document.getElementById('import-modal');
         const exitModal   = document.getElementById('exit-modal');
-        if (exportModal && exportModal.style.display !== 'none') {
+        // 写真の拡大表示は記録の詳細モーダルの上に重なるので、先にこちらを閉じる
+        if (isPhotoViewerOpen()) {
+          closePhotoViewer();
+        } else if (exportModal && exportModal.style.display !== 'none') {
           closeExportModal();
         } else if (importModal && importModal.style.display !== 'none') {
           cancelImport();

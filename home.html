@@ -1467,16 +1467,24 @@
     // V2: 過去ログタブを開くたびにクラウドから取得し直す（取得のたびに最新データを
     // フェッチする方針）。フィルタ・並べ替えの変更ではここで取得したlogRecordsを
     // 使い回し、再取得はしない（renderLogList()参照）。
+    // タブの連打などで読み込みが並行したとき、古い読み込みの結果（遅れて届いた失敗や
+    // 再試行の表示・読み上げ）が新しい結果を上書きしないよう、最後に始めた読み込みだけを反映する。
+    let logLoadSeq = 0;
+
     async function renderLog() {
+      const seq = ++logLoadSeq;
+      const isStale = () => seq !== logLoadSeq;
       const el = document.getElementById('log-list');
       el.innerHTML = '<p style="font-size:0.9375rem;color:var(--txt-sub);padding:8px 0">読み込み中です…</p>';
       // 通信が不安定なときはconfig.js側で自動的に再試行する。待ち時間が長くなるので、
       // 「止まっている」と誤解されないよう再試行中であることを表示・読み上げる。
       const data = await fetchCloudLog((attempt, max) => {
+        if (isStale()) return;
         const msg = '通信が不安定なため再試行しています（' + attempt + '／' + max + '回目）…';
         el.innerHTML = '<p style="font-size:0.9375rem;color:var(--txt-sub);padding:8px 0">' + msg + '</p>';
         announce(msg);
       }); // config.js
+      if (isStale()) return;
       if (data === null) {
         logRecords = [];
         el.innerHTML =

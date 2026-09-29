@@ -224,12 +224,50 @@ async function resendUnsentQueue() {
  * 失敗）という重大な回帰を引き起こした（2026-09-22に発生・即日revert）。
  * クエリパラメータによるURLのユニーク化だけで目的（キャッシュ回避）は
  * 達成できるため、cacheオプションは指定しないこと。
+ *
+ * 【自動再試行（2026-09-29）】
+ * GASの実行結果は別ドメイン（script.googleusercontent.com）から配信されるが、
+ * この配信段階が不安定で、スクリプト自体は数秒で完了しているのに
+ * 「404 Not Found」が返る／script.google.comへ差し戻されて応答が止まる、
+ * ということが確率的に起きる（実測で確認済み。応答が大きいほど起きやすい）。
+ * 再度リクエストすればたいてい成功するので、GET（読み取り専用で何度実行しても
+ * 安全）に限り、1回ごとに制限時間を設けたうえで自動的に再試行する。
+ * ※POST（callGas：記録の保存）は二重登録の恐れがあるため再試行しないこと。
+ *
+ * onRetry(attempt, max) … 再試行を始めるときに呼ばれる（画面に「再試行中」を出すため・任意）
  */
-async function fetchGas(action) {
+const GAS_GET_TIMEOUT_MS  = 30000; // 1回あたりの制限時間（止まったままの応答を打ち切る）
+const GAS_GET_MAX_ATTEMPTS = 3;
+
+async function fetchGasOnce(action) {
   const url = CONFIG.GAS_URL + '?action=' + encodeURIComponent(action) + '&_=' + Date.now();
-  const res = await fetch(url);
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), GAS_GET_TIMEOUT_MS) : null;
+  try {
+    const res = await fetch(url, ctrl ? { signal: ctrl.signal } : undefined);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json(); // JSONでない応答（エラー画面等）もここで例外になり再試行対象
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+async function fetchGas(action, onRetry) {
+  let lastErr;
+  for (let attempt = 1; attempt <= GAS_GET_MAX_ATTEMPTS; attempt++) {
+    if (attempt > 1) {
+      if (typeof onRetry === 'function') {
+        try { onRetry(attempt, GAS_GET_MAX_ATTEMPTS); } catch (e) {}
+      }
+      await new Promise(r => setTimeout(r, 1000 * (attempt - 1))); // 1秒・2秒と間隔を空ける
+    }
+    try {
+      return await fetchGasOnce(action);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr;
 }
 
 /* ─── クラウド設定データ（スケジュール・事業所・担当者） ─────────
@@ -258,14 +296,43 @@ async function saveCloudSetting(key, value) {
  * （オフライン用のローカルキャッシュには意図的にフォールバックせず）nullを返す。
  * 呼び出し元は「取得できませんでした」というエラー状態を表示すること。
  */
-async function fetchCloudLog() {
+async function fetchCloudLog(onRetry) {
   if (!CONFIG.GAS_URL) return null;
   try {
-    const data = await fetchGas('log');
-    return Array.isArray(data.records) ? data.records : null;
+    const data = await fetchGas('log', onRetry);
+    if (!Array.isArray(data.records)) return null;
+    return data.fields ? data.records.map(r => expandLogRecord(r, data.fields)) : data.records;
   } catch (e) {
     return null;
   }
+}
+
+/* GAS側（handleGetLog）は応答サイズを抑えるため空欄の項目を省いて返す
+ * （2026-09-29〜）。画面側のコードがこれまでと全く同じ形のデータを扱えるよう、
+ * 省かれた項目を元の既定値で復元する。
+ *   配列の項目 → []、svcTimes → {}、真偽値の項目 → false、それ以外 → ''
+ * savedAt / editedAt は従来から「空なら項目なし」なので復元しない。
+ * fields が無い応答（GAS側が旧版のまま）の場合は、そのまま返す。 */
+const LOG_ARRAY_FIELDS  = ['svctype', 'done', 'photos'];
+const LOG_OBJECT_FIELDS = ['svcTimes'];
+const LOG_BOOL_FIELDS   = ['pinned', 'iop_r_na', 'iop_l_na'];
+
+function expandLogRecord(r, fields) {
+  const rec = Object.assign({}, r);
+  if (!('is_self_report' in rec)) rec.is_self_report = false; // falseは省かれて届く
+  const list = rec.is_self_report ? (fields.self || []) : (fields.main || []);
+  list.forEach(k => {
+    if (k in rec) return;
+    if (LOG_ARRAY_FIELDS.indexOf(k) !== -1)       rec[k] = [];
+    else if (LOG_OBJECT_FIELDS.indexOf(k) !== -1) rec[k] = {};
+    else if (LOG_BOOL_FIELDS.indexOf(k) !== -1)   rec[k] = false;
+    else                                          rec[k] = '';
+  });
+  // svctype・done・svcTimes は本人・家族申告にも従来から付いていた（項目一覧には無い）
+  if (!('svctype' in rec))  rec.svctype = [];
+  if (!('done' in rec))     rec.done = [];
+  if (!('svcTimes' in rec)) rec.svcTimes = {};
+  return rec;
 }
 
 /* ─── 添付写真の表示（共通） ───────────────────────────────────

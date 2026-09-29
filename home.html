@@ -1470,7 +1470,13 @@
     async function renderLog() {
       const el = document.getElementById('log-list');
       el.innerHTML = '<p style="font-size:0.9375rem;color:var(--txt-sub);padding:8px 0">読み込み中です…</p>';
-      const data = await fetchCloudLog(); // config.js
+      // 通信が不安定なときはconfig.js側で自動的に再試行する。待ち時間が長くなるので、
+      // 「止まっている」と誤解されないよう再試行中であることを表示・読み上げる。
+      const data = await fetchCloudLog((attempt, max) => {
+        const msg = '通信が不安定なため再試行しています（' + attempt + '／' + max + '回目）…';
+        el.innerHTML = '<p style="font-size:0.9375rem;color:var(--txt-sub);padding:8px 0">' + msg + '</p>';
+        announce(msg);
+      }); // config.js
       if (data === null) {
         logRecords = [];
         el.innerHTML =

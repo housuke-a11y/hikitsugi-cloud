@@ -234,14 +234,31 @@ async function resendUnsentQueue() {
  * 安全）に限り、1回ごとに制限時間を設けたうえで自動的に再試行する。
  * ※POST（callGas：記録の保存）は二重登録の恐れがあるため再試行しないこと。
  *
- * onRetry(attempt, max) … 再試行を始めるときに呼ばれる（画面に「再試行中」を出すため・任意）
+ *
+ * 【先回りの取り直し（2026-09-29）】
+ * 再測定したところ、ホーム（1KB弱）のような小さい応答でも1回あたりの成功率は
+ * 4〜5割しかなく、失敗の多くは「差し戻されたまま応答が止まる」形だった。
+ * 制限時間まで待ってから次を出すと、失敗が続くと1分以上待たされるうえ、
+ * 3回とも失敗して取得できないことが6回に1回程度起きていた。そこで：
+ *   ・応答がないまま GAS_GET_HEDGE_MS 経過したら、最初の通信は待ち続けたまま
+ *     もう1本同時に出し、先に届いた方を使う（同時に出すのは最大2本まで）
+ *   ・404などですぐ失敗した場合は GAS_GET_RETRY_WAIT_MS 後に取り直す
+ *   ・最大 GAS_GET_MAX_ATTEMPTS 本・全体で GAS_GET_TOTAL_MS まで粘る
+ * 1本届いた時点で残りの通信は打ち切る。
+ *
+ * onRetry(attempt, max) … 2本目以降を出すときに呼ばれる（画面に「再試行中」を出すため・任意）
+ * query … action以外のパラメータ（例：'&id=xxx&as=base64'・任意）
  */
-const GAS_GET_TIMEOUT_MS  = 30000; // 1回あたりの制限時間（止まったままの応答を打ち切る）
-const GAS_GET_MAX_ATTEMPTS = 3;
+const GAS_GET_TIMEOUT_MS    = 40000; // 1本あたりの制限時間（止まったままの応答を打ち切る）
+const GAS_GET_HEDGE_MS      = 15000; // 応答がないままこの時間が過ぎたら、待ちながらもう1本出す
+const GAS_GET_RETRY_WAIT_MS = 1000;  // 失敗（404等）が返ってから次を出すまでの間隔
+const GAS_GET_MAX_CONCURRENT = 2;    // 同時に出す通信の上限
+const GAS_GET_MAX_ATTEMPTS  = 5;
+const GAS_GET_TOTAL_MS      = 90000; // 全体の上限
 
-async function fetchGasOnce(action) {
-  const url = CONFIG.GAS_URL + '?action=' + encodeURIComponent(action) + '&_=' + Date.now();
-  const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+async function fetchGasOnce(action, query, ctrl) {
+  const url = CONFIG.GAS_URL + '?action=' + encodeURIComponent(action) + (query || '') +
+    '&_=' + Date.now() + Math.random().toString(36).slice(2, 6); // 同時に出す2本もURLを別にする
   const timer = ctrl ? setTimeout(() => ctrl.abort(), GAS_GET_TIMEOUT_MS) : null;
   try {
     const res = await fetch(url, ctrl ? { signal: ctrl.signal } : undefined);
@@ -252,22 +269,56 @@ async function fetchGasOnce(action) {
   }
 }
 
-async function fetchGas(action, onRetry) {
-  let lastErr;
-  for (let attempt = 1; attempt <= GAS_GET_MAX_ATTEMPTS; attempt++) {
-    if (attempt > 1) {
-      if (typeof onRetry === 'function') {
-        try { onRetry(attempt, GAS_GET_MAX_ATTEMPTS); } catch (e) {}
+function fetchGas(action, onRetry, query) {
+  return new Promise((resolve, reject) => {
+    const controllers = [];
+    let started = 0, inFlight = 0, finished = false, lastErr = null;
+    let nextTimer = null, totalTimer = null;
+
+    const finish = (ok, value) => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(nextTimer);
+      clearTimeout(totalTimer);
+      controllers.forEach(c => { try { c.abort(); } catch (e) {} }); // 残りの通信を打ち切る
+      if (ok) resolve(value); else reject(value);
+    };
+
+    const scheduleNext = (ms) => {
+      clearTimeout(nextTimer);
+      nextTimer = setTimeout(launch, ms);
+    };
+
+    function launch() {
+      if (finished || started >= GAS_GET_MAX_ATTEMPTS) return;
+      if (inFlight >= GAS_GET_MAX_CONCURRENT) { scheduleNext(1000); return; } // 空くまで待つ
+      started++;
+      if (started > 1 && typeof onRetry === 'function') {
+        try { onRetry(started, GAS_GET_MAX_ATTEMPTS); } catch (e) {}
       }
-      await new Promise(r => setTimeout(r, 1000 * (attempt - 1))); // 1秒・2秒と間隔を空ける
+      const ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+      if (ctrl) controllers.push(ctrl);
+      inFlight++;
+      scheduleNext(GAS_GET_HEDGE_MS); // 応答がなければ先回りしてもう1本
+      fetchGasOnce(action, query, ctrl).then(
+        data => finish(true, data),
+        err => {
+          inFlight--;
+          lastErr = err;
+          if (finished) return;
+          if (started >= GAS_GET_MAX_ATTEMPTS) {
+            if (inFlight === 0) finish(false, lastErr); // 全部失敗
+            return;
+          }
+          if (inFlight === 0) scheduleNext(GAS_GET_RETRY_WAIT_MS); // すぐ取り直す
+          // 他の通信が進行中なら、その先回りタイマーに任せる
+        }
+      );
     }
-    try {
-      return await fetchGasOnce(action);
-    } catch (e) {
-      lastErr = e;
-    }
-  }
-  throw lastErr;
+
+    totalTimer = setTimeout(() => finish(false, lastErr || new Error('timeout')), GAS_GET_TOTAL_MS);
+    launch();
+  });
 }
 
 /* ─── クラウド設定データ（スケジュール・事業所・担当者） ─────────
@@ -356,9 +407,7 @@ async function loadPhotoFallback(img) {
   const id = img.dataset.photoId;
   if (!id || !CONFIG.GAS_URL) return;
   try {
-    const res = await fetch(photoUrl(id) + '&as=base64&_=' + Date.now());
-    if (!res.ok) return;
-    const data = await res.json();
+    const data = await fetchGas('photo', null, '&id=' + encodeURIComponent(id) + '&as=base64'); // 取得失敗時は自動で取り直す
     if (data && data.ok && data.dataUrl) img.src = data.dataUrl;
   } catch (e) {
     // 取得できなければ画像は表示されないままにする（説明文・記録本文の表示は妨げない）

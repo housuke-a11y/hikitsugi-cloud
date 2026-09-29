@@ -655,6 +655,8 @@
         </div>
       </div>
 
+      <p id="log-status" style="display:none;font-size:0.875rem;color:var(--txt-sub);margin:0 0 8px"></p>
+
       <div id="log-list" role="list" aria-label="過去の記録一覧"
            aria-live="polite"></div>
 
@@ -1469,33 +1471,113 @@
     // 使い回し、再取得はしない（renderLogList()参照）。
     // タブの連打などで読み込みが並行したとき、古い読み込みの結果（遅れて届いた失敗や
     // 再試行の表示・読み上げ）が新しい結果を上書きしないよう、最後に始めた読み込みだけを反映する。
+    //
+    // 【画面を開いている間の使い回し（2026-09-29）】
+    // GAS側の実行開始までに時間がかかり、1回の読み込みに30秒以上かかることがある。
+    // タブを開くたびに待たされないよう、このページで一度読み込んだ一覧があれば
+    // すぐに表示し、裏で最新を取り直して、内容が変わっていれば差し替える。
+    // 使い回すのはメモリ上（logRecords）だけで端末には保存しないため、ページを
+    // 閉じる・再読み込みすると消える（記録を端末に残さない方針は変わらない）。
+    // 読み込み中にタブを開き直した場合は、進行中の読み込みをそのまま待つ（通信を増やさない）。
     let logLoadSeq = 0;
+    let logLoaded = false;      // このページで一度でも読み込みに成功したか
+    let logLoadedJson = '';     // 変化の有無の判定用（変わっていなければ一覧を描き直さない）
+    let logLoadedAt = null;     // 表示中の一覧を取得した時刻
+    let logInFlight = null;     // 進行中の読み込み（Promise）
 
-    async function renderLog() {
+    const LOG_SLOW_NOTICE_SEC = 15; // これを過ぎたら「時間がかかっています」と1回だけ読み上げる
+
+    function setLogStatus(html) {
+      const st = document.getElementById('log-status');
+      st.innerHTML = html;
+      st.style.display = html ? '' : 'none';
+    }
+
+    function formatClock(d) {
+      return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
+    }
+
+    // 裏での取り直しを無効にする（削除直後などに、削除前の内容で一覧が上書きされないように）
+    function invalidateLogLoad() {
+      logLoadSeq++;
+      logInFlight = null;
+      setLogStatus('');
+    }
+
+    // force: trueのときは使い回さず、一覧を消して読み込み直す（端末の過去ログ移行の直後など）
+    function renderLog(opts) {
+      const force = !!(opts && opts.force);
+      if (logLoaded && !force) renderLogList(); // 前回の一覧をすぐに表示
+      if (logInFlight && !force) return logInFlight;
+      logInFlight = loadLog(logLoaded && !force);
+      return logInFlight;
+    }
+
+    async function loadLog(background) {
       const seq = ++logLoadSeq;
       const isStale = () => seq !== logLoadSeq;
       const el = document.getElementById('log-list');
-      el.innerHTML = '<p style="font-size:0.9375rem;color:var(--txt-sub);padding:8px 0">読み込み中です…</p>';
-      // 通信が不安定なときはconfig.js側で自動的に再試行する。待ち時間が長くなるので、
-      // 「止まっている」と誤解されないよう再試行中であることを表示・読み上げる。
-      const data = await fetchCloudLog((attempt, max) => {
-        if (isStale()) return;
-        const msg = '通信が不安定なため再試行しています（' + attempt + '／' + max + '回目）…';
-        el.innerHTML = '<p style="font-size:0.9375rem;color:var(--txt-sub);padding:8px 0">' + msg + '</p>';
-        announce(msg);
-      }); // config.js
+      const startedAt = Date.now();
+      const LOADING_STYLE = 'font-size:0.9375rem;color:var(--txt-sub);padding:8px 0';
+
+      // 待っている間の表示：経過秒数を出し、一定時間を過ぎたら1回だけ読み上げる。
+      // （通信の取り直しそのものはconfig.js側で自動的に行う。取り直しのたびに
+      // 「再試行しています」と読み上げると、失敗が続いているように聞こえて不安を与えるため出さない）
+      let slowNoticed = false;
+      const showProgress = () => {
+        const sec = Math.floor((Date.now() - startedAt) / 1000);
+        const slow = sec >= LOG_SLOW_NOTICE_SEC;
+        if (background) {
+          setLogStatus('最新の内容を確認しています…' + (slow ? '（' + sec + '秒経過）' : ''));
+        } else {
+          el.innerHTML = '<p style="' + LOADING_STYLE + '">過去ログを読み込んでいます…' +
+            (slow ? '（' + sec + '秒経過）<br>混み合っているため時間がかかっています。そのままお待ちください。' : '') + '</p>';
+        }
+        if (slow && !slowNoticed && !background) {
+          slowNoticed = true;
+          announce('過去ログの読み込みに時間がかかっています。そのままお待ちください。');
+        }
+      };
+      if (!background) logRecords = [];
+      showProgress();
+      const timer = setInterval(() => { if (!isStale()) showProgress(); }, 5000);
+
+      let data;
+      try {
+        data = await fetchCloudLog(); // config.js
+      } finally {
+        clearInterval(timer);
+      }
       if (isStale()) return;
+      logInFlight = null;
+
       if (data === null) {
-        logRecords = [];
-        el.innerHTML =
-          '<p style="font-size:0.9375rem;color:var(--danger);padding:8px 0">' +
-          '過去ログの取得に失敗しました。通信環境をご確認ください。' +
-          '<button class="btn-secondary" style="margin-left:6px;font-size:0.8125rem;padding:4px 10px;min-height:32px" onclick="renderLog()">再読み込み</button></p>';
-        announce('過去ログの取得に失敗しました。');
+        if (background) {
+          // 前回の一覧は表示したまま、最新を確認できなかったことだけを伝える
+          setLogStatus('<span style="color:var(--danger)">最新の内容を確認できませんでした。</span>' +
+            '表示中の一覧は' + formatClock(logLoadedAt) + '時点のものです。' +
+            '<button class="btn-secondary" style="margin-left:6px;font-size:0.8125rem;padding:4px 10px;min-height:32px" onclick="renderLog()">再読み込み</button>');
+          announce('最新の内容を確認できませんでした。表示中の一覧は' + formatClock(logLoadedAt) + '時点のものです。');
+        } else {
+          el.innerHTML =
+            '<p style="font-size:0.9375rem;color:var(--danger);padding:8px 0">' +
+            '過去ログの取得に失敗しました。通信環境をご確認ください。' +
+            '<button class="btn-secondary" style="margin-left:6px;font-size:0.8125rem;padding:4px 10px;min-height:32px" onclick="renderLog()">再読み込み</button></p>';
+          announce('過去ログの取得に失敗しました。');
+        }
         return;
       }
+
+      setLogStatus('');
+      const json = JSON.stringify(data);
+      const changed = json !== logLoadedJson;
       logRecords = data;
-      renderLogList();
+      logLoaded = true;
+      logLoadedJson = json;
+      logLoadedAt = new Date();
+      // 裏での取り直しで内容が変わっていなければ描き直さない（読み上げ位置・スクロールを保つ）
+      if (!background || changed) renderLogList();
+      if (background && changed) announce('過去ログを最新の内容に更新しました。');
     }
 
     function renderLogList() {
@@ -1640,7 +1722,10 @@
       };
       const result = await submitToCloud(payload, '記録の削除：' + record.date);
       if (result.sent) {
+        // 削除前に始まった裏での取り直しが、削除前の内容で一覧を上書きしないよう無効にする
+        invalidateLogLoad();
         logRecords = logRecords.filter(r => r.id !== id);
+        logLoadedJson = JSON.stringify(logRecords);
         renderLogList();
         announce('記録を削除しました');
       } else {
@@ -2658,7 +2743,7 @@
         }
       }
 
-      await renderLog();
+      await renderLog({ force: true });
       await renderSettings();
 
       const resultMsg = pushResult.total + '件中、送信' + pushResult.sent + '件・スキップ（クラウドに同等以上の内容あり）' +
@@ -2696,7 +2781,7 @@
         statusEl.textContent = '送信しています…（' + done + '/' + total + '件）';
       });
 
-      await renderLog();
+      await renderLog({ force: true });
       const msg = result.total + '件中、送信' + result.sent + '件・スキップ' + result.skipped + '件' +
         (result.failed > 0 ? '・失敗' + result.failed + '件（ホーム画面の未送信データから再送信できます）' : '') + '。';
       statusEl.textContent = '移行が完了しました。' + msg;

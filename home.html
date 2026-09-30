@@ -1065,7 +1065,7 @@
     }
 
     /* ─── V2: 未送信データ（送信失敗後に一時保存された記録）の警告・再送信 ───
-     * config.jsのgetUnsentQueue()は30分経過分を自動的に取り除くので、
+     * config.jsのgetUnsentQueue()は保存期限（UNSENT_EXPIRY_MS）を過ぎた分を自動的に取り除くので、
      * ここで残っている件数＝まだ再送信できていない件数として表示する。
      */
     function checkUnsentQueue() {

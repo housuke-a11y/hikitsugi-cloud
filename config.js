@@ -27,7 +27,13 @@ const CONFIG = {
   SESSION_TIMEOUT_MS: 30 * 60 * 1000, // 30分
 
   // 送信失敗時の一時保存データを自動削除するまでの時間
-  UNSENT_EXPIRY_MS: 30 * 60 * 1000 // 30分
+  // （写真付きの記録を翌日の訪問時にも再送信できるよう、30分から延長）
+  UNSENT_EXPIRY_MS: 24 * 60 * 60 * 1000, // 24時間
+
+  // 記録の保存（submitToCloud）の制限時間。GASの応答が止まったまま
+  // 「保存しています…」から進まず、待ちきれずに画面を閉じられるのを防ぐ。
+  // 写真付きの送信・GAS側の待ち（実測で最大35秒程度）を見込んだ長さにする。
+  SAVE_TIMEOUT_MS: 90 * 1000 // 90秒
 };
 
 /* ─── PINハッシュ化（SubtleCrypto / SHA-256） ─────────────────── */
@@ -44,15 +50,33 @@ async function sha256Hex(text) {
  * Content-Typeを指定せず（ブラウザ既定のtext/plainで）本文にJSON文字列を送る。
  * doPost側は e.postData.contents を JSON.parse して読み取ること。
  * GAS_URL未設定時は呼び出し元でフォールバック処理をすること。
+ *
+ * timeoutMs（任意）を指定すると、その時間内に応答が届かなければ打ち切り、
+ * err.name === 'TimeoutError' のエラーを投げる。POSTは再試行しないため、
+ * この場合「GAS側で保存されたかどうかは分からない」ことに注意する。
  */
-async function callGas(payload) {
+async function callGas(payload, timeoutMs) {
   if (!CONFIG.GAS_URL) throw new Error('GAS_URL_NOT_SET');
-  const res = await fetch(CONFIG.GAS_URL, {
-    method: 'POST',
-    body: JSON.stringify(payload)
-  });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  return res.json();
+  const ctrl  = timeoutMs ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(CONFIG.GAS_URL, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+      signal: ctrl ? ctrl.signal : undefined
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    return await res.json();
+  } catch (e) {
+    if (ctrl && ctrl.signal.aborted) {
+      const err = new Error('TIMEOUT');
+      err.name = 'TimeoutError';
+      throw err;
+    }
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 /* ─── セッション（ロール保持） ───────────────────────────────
@@ -138,7 +162,7 @@ function startInactivityTimer(onTimeout) {
 /* ─── 未送信データキュー（送信失敗時の一時保存・再送信） ─────────
  * V2個人情報保護方針：GAS送信に失敗した記録は、再送信できるよう
  * localStorageに一時保存する（＝恒久保存ではなく一時保存）。
- * 保存から UNSENT_EXPIRY_MS（既定30分）を過ぎた項目は、次回参照時に
+ * 保存から UNSENT_EXPIRY_MS（既定24時間）を過ぎた項目は、次回参照時に
  * 自動的に取り除かれる（=自動削除。取りこぼし防止のためのタイムスタンプ管理）。
  * 各項目の payload は callGas() にそのまま渡せる形（doPostへ送るJSON）で保持する。
  */
@@ -188,14 +212,14 @@ function clearUnsentQueue() {
 /* すべての未送信項目の再送信を試みる。
  * 戻り値: { successCount, failCount }
  * 成功した項目はキューから取り除く。失敗した項目はキューに残る
- * （30分経過後は次回参照時に自動的に取り除かれる）。
+ * （UNSENT_EXPIRY_MS経過後は次回参照時に自動的に取り除かれる）。
  */
 async function resendUnsentQueue() {
   const list = getUnsentQueue();
   let successCount = 0, failCount = 0;
   for (const item of list) {
     try {
-      const result = await callGas(item.payload);
+      const result = await callGas(item.payload, CONFIG.SAVE_TIMEOUT_MS);
       if (result && result.ok) {
         removeUnsentItem(item.queuedAt);
         successCount++;
@@ -417,24 +441,34 @@ async function loadPhotoFallback(img) {
 /* ─── クラウド（GAS）への送信共通処理 ─────────────────────────
  * home.html（削除）・hikitsugi_app.html（新規保存・編集）の両方から使う。
  * GAS_URL未設定時：クラウド未接続として何もせず終了。
- * 送信成功時：{ sent: true }
+ * 送信成功時：{ sent: true, queued: false }
  * 送信失敗時：未送信キューに積んで再送信できるようにし、
- *             { sent: false, message: '…' } を返す
+ *             { sent: false, queued: true, message: '…' } を返す
  *             （ホーム画面の「未送信データが残っています」バナーから
  *             resendUnsentQueue() で再送信できる）。
+ *             キューにも積めなかった場合は queued: false。呼び出し元は
+ *             入力内容を画面に残し、その場で保存し直せるようにすること。
+ *
+ * 制限時間（CONFIG.SAVE_TIMEOUT_MS）を過ぎた場合も失敗として扱う。
+ * GAS側では保存済みの可能性があるが、同じ記録IDで再送信すれば
+ * 過去ログでは1件にまとまる（GAS側で同一idの行は最新の1件だけを返す）。
  */
 async function submitToCloud(payload, label) {
-  if (!CONFIG.GAS_URL) return { sent: false, message: '' };
+  if (!CONFIG.GAS_URL) return { sent: false, queued: false, message: '' };
   try {
-    const result = await callGas(payload);
-    if (result && result.ok) return { sent: true, message: '' };
+    const result = await callGas(payload, CONFIG.SAVE_TIMEOUT_MS);
+    if (result && result.ok) return { sent: true, queued: false, message: '' };
     throw new Error((result && result.error) || '送信に失敗しました');
   } catch (e) {
+    const reason = (e && e.name === 'TimeoutError')
+      ? 'クラウドからの応答がなく、送信できたか確認できませんでした'
+      : 'クラウドへの送信に失敗しました';
     const queued = addUnsentItem(payload, label || '');
     if (queued) {
       return {
         sent: false,
-        message: 'クラウドへの送信に失敗したため、この端末に一時保存しました。ホーム画面から再送信してください。'
+        queued: true,
+        message: reason + '。この端末に一時保存したので、ホーム画面から再送信してください。'
       };
     }
     // 【写真添付機能】未送信キューへの一時保存自体に失敗した場合
@@ -443,7 +477,8 @@ async function submitToCloud(payload, label) {
     // はっきり伝える（黙って消えたと誤解されないように）。
     return {
       sent: false,
-      message: 'クラウドへの送信に失敗し、この端末への一時保存もできませんでした（写真データが大きい可能性があります）。この画面を閉じずに、電波の良い場所でもう一度保存し直してください。'
+      queued: false,
+      message: reason + '。写真データが大きいため、この端末への一時保存もできませんでした。入力内容はこの画面に残してあります。電波の良い場所で、もう一度「保存」を押してください。'
     };
   }
 }

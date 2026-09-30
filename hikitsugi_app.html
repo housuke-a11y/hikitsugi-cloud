@@ -3111,6 +3111,10 @@
     /* ─── 編集モード状態 ──────────────────────────── */
     let editingId = null;
     let editingBeforeSnapshot = null; // V2: 編集履歴用に、編集開始時点のクラウド上の内容を保持
+    // 新規保存が送信・一時保存ともに失敗して画面に残ったときの記録ID（{id, savedAt}）。
+    // 保存し直すときに同じIDを使い、前回の送信が実はGAS側に届いていた場合でも
+    // 過去ログで2件にならないようにする。clearForm()でリセットする。
+    let retryRecordKey = null;
 
     /* ─── 編集 ─────────────────────────────────────── */
     // V2: 過去ログはクラウドが唯一の情報源のため、編集開始時にクラウドから取得する
@@ -3381,11 +3385,20 @@
       if (wasEditing && editingBeforeSnapshot) {
         rec.id      = editingBeforeSnapshot.id;
         rec.savedAt = editingBeforeSnapshot.savedAt;
+      } else if (!wasEditing && retryRecordKey) {
+        rec.id      = retryRecordKey.id;
+        rec.savedAt = retryRecordKey.savedAt;
       }
       if (wasEditing) rec.editedAt = Date.now();
 
+      // 送信中であることを画面上でも示す（読み上げだけだと、晴眼の利用者には
+      // 止まっているように見え、待ちきれずに閉じられてしまうため）
       const submitBtn = document.getElementById('save-btn');
-      if (submitBtn) submitBtn.disabled = true;
+      const submitBtnLabel = submitBtn ? submitBtn.textContent : '';
+      if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = '送信しています…画面を閉じずにお待ちください';
+      }
       announce(wasEditing ? '記録を更新しています…' : '記録を保存しています…');
 
       const payload = {
@@ -3397,7 +3410,21 @@
 
       const sendResult = await submitToCloud(payload, (wasEditing ? '更新' : '新規') + '記録：' + rec.date);
 
-      if (submitBtn) submitBtn.disabled = false;
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = submitBtnLabel;
+      }
+
+      // 送信も端末への一時保存もできなかった場合は、ここで入力内容を消して
+      // ホームへ移動すると記録・写真がどこにも残らない。画面に留まり、
+      // そのまま保存し直せるようにする（編集中の状態・添付写真もそのまま）。
+      if (!sendResult.sent && !sendResult.queued && CONFIG.GAS_URL) {
+        if (!wasEditing) retryRecordKey = { id: rec.id, savedAt: rec.savedAt };
+        announce(sendResult.message);
+        alert(sendResult.message);
+        return;
+      }
+
       announce(
         (wasEditing ? '記録を更新しました。' : '記録を保存しました。') +
         (sendResult.sent ? '' : sendResult.message) +
@@ -3864,6 +3891,7 @@
         new Date().toISOString().slice(0, 10);
       editingId = null;
       editingBeforeSnapshot = null;
+      retryRecordKey = null;
       const lbl = document.getElementById('form-mode-label');
       if (lbl) lbl.textContent = '';
       const btn = document.getElementById('save-btn');
